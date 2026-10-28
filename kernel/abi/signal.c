@@ -381,7 +381,7 @@ void sv_fault(struct regs *r)
     if (v == 14) {
         uint64_t addr = thread_current()->fault_addr;
         if (mm_fault(t->g->mm, addr, r->error)) return;
-        mm_fault_report(t->g->mm, addr, r->error);
+        if (t->g->sig->act[SIGSEGV].handler == SIG_DFL) mm_fault_report(t->g->mm, addr, r->error);
         t->sigsegv_addr = addr;
         t->sigsegv_code = (r->error & 1) ? SEGV_ACCERR : SEGV_MAPERR;
         int sig = SIGSEGV;
