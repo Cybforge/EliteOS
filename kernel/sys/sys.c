@@ -126,6 +126,16 @@ void sys_init(void)
         char from[96];
         snprintf(from, sizeof(from), "%s/zenith/etc", persist_root);
         if (vfs_lookup(from)) overlay(from, "/etc");
+        /* /home, /opt (installed apps and drivers) and /var live on the volume */
+        static const struct { const char *at, *rel; } dirs[] = {
+            { "/home", "home" }, { "/opt", "zenith/opt" }, { "/var", "zenith/var" },
+        };
+        for (unsigned i = 0; i < ARRAY_SIZE(dirs); i++) {
+            char target[96];
+            snprintf(target, sizeof(target), "%s/%s", persist_root, dirs[i].rel);
+            sys_mkdir_p(target);
+            vfs_alias(dirs[i].at, target);
+        }
         klog("sys: system volume at %s", persist_root);
     } else {
         klog("sys: live session, nothing is stored");

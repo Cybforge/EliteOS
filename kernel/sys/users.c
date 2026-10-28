@@ -12,6 +12,7 @@
 #include <crypto.h>
 #include <dev.h>
 #include <sys.h>
+#include <pkg.h>
 
 #define MAX_USERS 16
 #define SALT_LEN 16
@@ -20,42 +21,6 @@
 struct session session;
 static struct account accts[MAX_USERS];
 static int nacct;
-
-/* ---- base64 ---- */
-
-static const char b64chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-static void b64enc(const uint8_t *in, size_t n, char *out)
-{
-    size_t o = 0;
-    for (size_t i = 0; i < n; i += 3) {
-        uint32_t v = (uint32_t)in[i] << 16 | (i + 1 < n ? (uint32_t)in[i + 1] << 8 : 0) | (i + 2 < n ? in[i + 2] : 0);
-        out[o++] = b64chars[v >> 18];
-        out[o++] = b64chars[(v >> 12) & 63];
-        out[o++] = i + 1 < n ? b64chars[(v >> 6) & 63] : '=';
-        out[o++] = i + 2 < n ? b64chars[v & 63] : '=';
-    }
-    out[o] = 0;
-}
-
-static int b64dec(const char *in, uint8_t *out, size_t max)
-{
-    uint32_t acc = 0;
-    int bits = 0;
-    size_t n = 0;
-    for (; *in && *in != '='; in++) {
-        const char *p = strchr(b64chars, *in);
-        if (!p || !*in) return -1;
-        acc = acc << 6 | (uint32_t)(p - b64chars);
-        bits += 6;
-        if (bits >= 8) {
-            bits -= 8;
-            if (n >= max) return -1;
-            out[n++] = (uint8_t)(acc >> bits);
-        }
-    }
-    return (int)n;
-}
 
 /* ---- hashing ---- */
 
@@ -67,8 +32,8 @@ static void make_hash(const char *password, char *out, size_t outn)
     uint32_t iter = (uint32_t)conf_int(&sysconf, "pbkdf2_iterations", 30000);
     pbkdf2_sha256((const uint8_t *)password, strlen(password), salt, sizeof(salt), iter, dk, sizeof(dk));
     char s[32], h[64];
-    b64enc(salt, sizeof(salt), s);
-    b64enc(dk, sizeof(dk), h);
+    base64_encode(salt, sizeof(salt), s);
+    base64_encode(dk, sizeof(dk), h);
     snprintf(out, outn, "$pbkdf2-sha256$%u$%s$%s", iter, s, h);
 }
 
@@ -85,7 +50,7 @@ static bool check_hash(const char *hash, const char *password)
     if (!dollar) return false;
     *dollar = 0;
     uint8_t salt[SALT_LEN + 4], want[HASH_LEN + 4], dk[HASH_LEN];
-    int sl = b64dec(tmp, salt, sizeof(salt)), wl = b64dec(dollar + 1, want, sizeof(want));
+    int sl = base64_decode(tmp, salt, sizeof(salt)), wl = base64_decode(dollar + 1, want, sizeof(want));
     if (sl != SALT_LEN || wl != HASH_LEN) return false;
     pbkdf2_sha256((const uint8_t *)(password ? password : ""), password ? strlen(password) : 0, salt, (size_t)sl,
                   iter, dk, sizeof(dk));
@@ -231,8 +196,7 @@ static void copy_tree(const char *from, const char *to)
 
 int session_create_home(const char *name, char *home, size_t n)
 {
-    const char *root = sys_persist_root();
-    snprintf(home, n, "%s/home/%s", root ? root : "", name);
+    snprintf(home, n, "/home/%s", name);                 /* on an installed system /home is the volume's home folder */
     bool fresh = !vfs_lookup(home);
     int r = sys_mkdir_p(home);
     if (r) return r;

@@ -7,7 +7,8 @@
 #include <tls.h>
 #include <mm.h>
 #include <dev.h>
-#include <inflate.h>
+#include <archive.h>
+#include <vfs.h>
 
 #define BODY_MAX (16u << 20)
 
@@ -92,24 +93,7 @@ static bool unchunk(uint8_t *b, size_t len, size_t *out_len)
 
 static uint8_t *gunzip(const uint8_t *d, size_t n, size_t *out_len)
 {
-    if (n < 18 || d[0] != 0x1f || d[1] != 0x8b || d[2] != 8) return NULL;
-    int flg = d[3];
-    size_t p = 10;
-    if (flg & 4) { if (p + 2 > n) return NULL; p += 2 + (size_t)(d[p] | d[p + 1] << 8); }
-    if (flg & 8) { while (p < n && d[p]) p++; p++; }
-    if (flg & 16) { while (p < n && d[p]) p++; p++; }
-    if (flg & 2) p += 2;
-    if (p >= n) return NULL;
-    uint32_t isize = (uint32_t)(d[n - 4] | d[n - 3] << 8 | d[n - 2] << 16 | (uint32_t)d[n - 1] << 24);
-    size_t cap = MIN((size_t)isize, (size_t)BODY_MAX) + 1;
-    uint8_t *out = kmalloc(cap);
-    if (!out) return NULL;
-    size_t got = 0;
-    int r = inflate_raw(d + p, n - p - 8, out, cap - 1, &got);
-    if (r && r != -2) { kfree(out); return NULL; }
-    out[got] = 0;
-    *out_len = got;
-    return out;
+    return gunzip_alloc(d, n, out_len, BODY_MAX);
 }
 
 int net_http_request(const char *url, struct http_result *r, int timeout_ms)
@@ -249,4 +233,189 @@ int net_http_get_ex(const char *url, char **body, size_t *blen, char *location, 
 int net_http_get(const char *url, char **body, size_t *blen, int timeout_ms)
 {
     return net_http_get_ex(url, body, blen, NULL, 0, timeout_ms);
+}
+
+/* ------------------------------------------------------------------------
+ * downloads to a file: the body is written as it arrives, so the size is
+ * limited by the disk, not by memory
+ * ---------------------------------------------------------------------- */
+
+struct dl {
+    vnode_t *vn;
+    uint64_t off, total, max;
+    bool chunked, have_len, done;
+    /* chunked decoding */
+    int cstate;                 /* 0 size line, 1 data, 2 CR LF after data, 3 trailer */
+    uint64_t csize;
+    int csize_digits;
+    bool csize_ext;
+    net_progress_fn cb;
+    void *ctx;
+    bool failed;
+};
+
+static void dl_write(struct dl *d, const uint8_t *p, size_t n)
+{
+    if (!n || d->failed) return;
+    if (d->off + n > d->max) { d->failed = true; return; }
+    if (vfs_write(d->vn, d->off, p, n) != (long)n) { d->failed = true; return; }
+    d->off += n;
+    if (d->cb) d->cb(d->ctx, d->off, d->have_len ? d->total : 0);
+}
+
+static void dl_feed(struct dl *d, const uint8_t *p, size_t n)
+{
+    if (!d->chunked) {
+        if (d->have_len && d->off + n > d->total) n = (size_t)(d->total - d->off);
+        dl_write(d, p, n);
+        if (d->have_len && d->off >= d->total) d->done = true;
+        return;
+    }
+    while (n && !d->done && !d->failed) {
+        switch (d->cstate) {
+        case 0: {                                           /* hex size, extensions, LF */
+            uint8_t c = *p++;
+            n--;
+            int v = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+            if (c == '\n') {
+                if (!d->csize_digits) break;                /* blank line before the size */
+                d->cstate = d->csize ? 1 : 3;
+                d->csize_ext = false;
+                if (!d->csize) d->done = true;
+            } else if (v >= 0 && !d->csize_ext) {
+                d->csize = d->csize * 16 + (uint64_t)v;
+                d->csize_digits++;
+            } else if (c != '\r') {
+                d->csize_ext = true;
+            }
+            break;
+        }
+        case 1: {
+            size_t take = (size_t)MIN((uint64_t)n, d->csize);
+            dl_write(d, p, take);
+            p += take;
+            n -= take;
+            d->csize -= take;
+            if (!d->csize) { d->cstate = 2; }
+            break;
+        }
+        case 2:                                             /* the CR LF after the data */
+            if (*p == '\n') { d->cstate = 0; d->csize = 0; d->csize_digits = 0; }
+            p++;
+            n--;
+            break;
+        default:
+            n = 0;
+        }
+    }
+}
+
+int net_http_download(const char *start_url, const char *dest, uint64_t max_bytes, net_progress_fn cb, void *ctx,
+                      char *err, size_t errn)
+{
+#define FAIL(...) do { if (err) snprintf(err, errn, __VA_ARGS__); rc = -1; goto out; } while (0)
+    char url[512];
+    strlcpy(url, start_url, sizeof(url));
+    int rc = 0;
+    struct conn c = { 0 };
+    uint8_t *buf = kmalloc(65536 + 1);
+    struct dl d = { 0 };
+    d.cb = cb;
+    d.ctx = ctx;
+    d.max = max_bytes ? max_bytes : (1ull << 40);
+    if (!buf) { if (err) snprintf(err, errn, "out of memory"); return -1; }
+    for (int hop = 0; hop < 6; hop++) {
+        bool https;
+        char host[128], path[1024];
+        uint16_t port;
+        if (!parse_url(url, &https, host, sizeof(host), &port, path, sizeof(path))) FAIL("that is not a valid address");
+        struct net_info ni;
+        if (!net_get_info(&ni) || !ni.ip) FAIL("no network connection");
+        uint32_t ip;
+        if (!str_to_ip(host, &ip) && !net_resolve(host, &ip, 4000)) FAIL("could not find the server '%s'", host);
+        c.sock = tcp_connect(ip, port, 8000);
+        if (!c.sock) FAIL("%s did not accept a connection on port %u", host, port);
+        if (https) {
+            char terr[160] = "";
+            c.tls = tls_connect(c.sock, host, 10000, terr, sizeof(terr));
+            if (!c.tls) { tcp_close(c.sock); c.sock = NULL; FAIL("%s", terr[0] ? terr : "the secure connection failed"); }
+        }
+        char hostport[140];
+        if ((https && port == 443) || (!https && port == 80)) strlcpy(hostport, host, sizeof(hostport));
+        else snprintf(hostport, sizeof(hostport), "%s:%u", host, port);
+        char req[1500];
+        int n = snprintf(req, sizeof(req),
+                         "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: ZenithOS/" ZENITH_VERSION " pkg\r\n"
+                         "Accept: */*\r\nConnection: close\r\n\r\n", path, hostport);
+        if (conn_send(&c, req, (size_t)n) != n) FAIL("sending the request failed");
+
+        /* headers */
+        size_t len = 0, hdr_end = 0;
+        uint64_t deadline = uptime_ms() + 30000;
+        while (!hdr_end && len < 16384) {
+            long got = conn_recv(&c, buf + len, 16384 - len, 2000);
+            if (got == -2) { if (uptime_ms() > deadline) FAIL("the server took too long"); continue; }
+            if (got <= 0) break;
+            len += (size_t)got;
+            for (size_t i = 0; i + 3 < len && !hdr_end; i++)
+                if (!memcmp(buf + i, "\r\n\r\n", 4)) hdr_end = i + 4;
+        }
+        if (!hdr_end || len < 12 || memcmp(buf, "HTTP/", 5)) FAIL("the server's answer was not HTTP");
+        uint8_t first_body_byte = buf[hdr_end];              /* the header parser wants a terminated string */
+        buf[hdr_end] = 0;
+        int status = atoi((char *)buf + 9);
+        if (status >= 300 && status < 400) {
+            char loc[512];
+            if (!header((char *)buf, hdr_end, "Location", loc, sizeof(loc))) FAIL("the server redirected without saying where");
+            char next[512];
+            const char *h = strstr(url, "://");
+            if (strstr(loc, "://")) strlcpy(next, loc, sizeof(next));
+            else {
+                const char *slash = h ? strchr(h + 3, '/') : NULL;
+                size_t keep = slash ? (size_t)(slash - url) : strlen(url);
+                snprintf(next, sizeof(next), "%.*s%s%s", (int)keep, url, loc[0] == '/' ? "" : "/", loc);
+            }
+            if (c.tls) tls_close(c.tls);
+            tcp_close(c.sock);
+            c.tls = NULL;
+            c.sock = NULL;
+            strlcpy(url, next, sizeof(url));
+            continue;
+        }
+        if (status < 200 || status >= 300) FAIL("the server answered %d", status);
+        char v[64];
+        if (header((char *)buf, hdr_end, "Content-Length", v, sizeof(v))) {
+            d.total = (uint64_t)strtol(v, NULL, 10);
+            d.have_len = true;
+            if (d.total > d.max) FAIL("the file is larger than the allowed %lu MiB", d.max >> 20);
+        }
+        if (header((char *)buf, hdr_end, "Transfer-Encoding", v, sizeof(v)) && strstr_ci(v, "chunked")) d.chunked = true;
+        buf[hdr_end] = first_body_byte;
+        d.vn = vfs_open(dest, true);
+        if (!d.vn) FAIL("cannot create %s", dest);
+        vfs_truncate(d.vn, 0);
+        dl_feed(&d, buf + hdr_end, len - hdr_end);
+        uint64_t last = uptime_ms();
+        while (!d.done && !d.failed) {
+            long got = conn_recv(&c, buf, 65536, 2000);
+            if (got == -2) { if (uptime_ms() - last > 30000) FAIL("the download stalled"); continue; }
+            if (got <= 0) break;
+            last = uptime_ms();
+            dl_feed(&d, buf, (size_t)got);
+        }
+        if (d.failed) FAIL("could not write %s (disk full?)", dest);
+        if (d.have_len && d.off < d.total) FAIL("the download was cut off at %lu of %lu bytes", d.off, d.total);
+        if (d.chunked && !d.done) FAIL("the download was cut off");
+        if (cb) cb(ctx, d.off, d.off);
+        goto out;
+    }
+    FAIL("too many redirects");
+out:
+    if (d.vn) vfs_close(d.vn);
+    if (c.tls) tls_close(c.tls);
+    if (c.sock) tcp_close(c.sock);
+    kfree(buf);
+    if (rc && d.vn) vfs_unlink(dest, false);              /* never leave half a file behind */
+    return rc;
+#undef FAIL
 }

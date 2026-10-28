@@ -62,6 +62,11 @@ struct http_result {
     char tls[96];               /* e.g. "TLS 1.3, AES-128-GCM, X25519" when secure */
 };
 int  net_http_request(const char *url, struct http_result *r, int timeout_ms);
+
+/* download to a file, written as it arrives; 0 on success, -1 with a readable message in err */
+typedef void (*net_progress_fn)(void *ctx, uint64_t done, uint64_t total);   /* total 0 = unknown */
+int  net_http_download(const char *url, const char *dest, uint64_t max_bytes, net_progress_fn cb, void *ctx,
+                       char *err, size_t errn);
 bool str_to_ip(const char *s, uint32_t *ip);
 
 #endif

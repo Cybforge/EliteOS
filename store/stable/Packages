@@ -1,0 +1,13 @@
+Package: bochs-vga
+Version: 1.0
+Type: driver
+Arch: x86_64
+Category: Drivers
+Description: Display driver for the Bochs/QEMU standard VGA adapter (mode setting from the monitor's EDID)
+Match-PCI: 1234:1111 80ee:beef
+Module: bochs.zko
+Filename: pkg/bochs-vga_1.0.zpk
+Size: 1931
+Installed-Size: 4408
+SHA256: 31519ecab405b5e8844b89ea1de80a9527993038bb15cad84fb6fb78baeb0aa8
+

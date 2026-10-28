@@ -73,6 +73,7 @@ NORETURN void panic(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 /* lib/ksym.c */
 const char *ksym_lookup(uint64_t addr, uint64_t *off);
+uint64_t    ksym_find(const char *name);        /* address of an exported kernel function, 0 if none */
 
 /* kernel log ring buffer (readable from the Log app / dmesg) */
 size_t klog_read(char *buf, size_t size);

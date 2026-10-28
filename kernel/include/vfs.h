@@ -40,6 +40,7 @@ struct vnode {
     uint32_t ino;               /* file system private (FAT: first cluster) */
     bool loaded;                /* file data / directory entries are in memory */
     bool dirty;                 /* needs writing back */
+    vnode_t *alias;             /* directory this name stands for (see vfs_alias) */
 };
 
 /* a mounted disk file system; every call is made with the VFS lock held */
@@ -97,6 +98,9 @@ char    *vfs_read_file(const char *path, size_t *size);   /* kmalloc'd, NUL term
 int      vfs_write_file(const char *path, const void *data, size_t size);
 vnode_t *vfs_register_dev(const char *path, dev_read_fn r, dev_write_fn w, void *ctx);
 size_t   vfs_total_bytes(void);
+
+/* make a directory appear at another place: /home -> <volume>/home */
+int      vfs_alias(const char *path, const char *target);
 
 /* mounts */
 int      vfs_mount(const char *path, struct fs_mount *m, uint32_t root_ino);

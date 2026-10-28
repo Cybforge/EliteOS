@@ -149,6 +149,7 @@ static vnode_t *walk(const char *path, vnode_t **parent_out, const char **last_o
         if (!cur || cur->type != VN_DIR) { cur = NULL; break; }
         ensure_loaded(cur);
         cur = child_named(cur, s, len);
+        if (cur && cur->alias) cur = cur->alias;
         if (!cur) {
             /* only the last component may be missing */
             while (*p == '/') p++;
@@ -230,6 +231,22 @@ void vfs_close(vnode_t *vn)
     mutex_lock(&vfs_mtx);
     if (--vn->refs == 0 && vn->unlinked) node_free(vn);
     mutex_unlock(&vfs_mtx);
+}
+
+/* path becomes another name for the directory target (both must exist; path should be empty) */
+int vfs_alias(const char *path, const char *target)
+{
+    mutex_lock(&vfs_mtx);
+    vnode_t *t = walk(target, NULL, NULL);
+    int err = 0;
+    vnode_t *n = walk(path, NULL, NULL);
+    if (!n) n = create_locked(path, VN_DIR, &err);
+    if (!t || t->type != VN_DIR) err = E_NOENT;
+    else if (!n) err = err ? err : E_NOENT;
+    else if (n->type != VN_DIR) err = E_NOTDIR;
+    else if (n != t) n->alias = t;
+    mutex_unlock(&vfs_mtx);
+    return err;
 }
 
 int vfs_mkdir(const char *path)
