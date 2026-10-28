@@ -1,0 +1,5 @@
+name=Welcome
+comment=Tour of ZenithOS
+icon=home
+exec=@welcome
+category=System

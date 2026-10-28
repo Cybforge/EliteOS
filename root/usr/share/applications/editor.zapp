@@ -1,0 +1,5 @@
+name=Text Editor
+comment=Write notes and code
+icon=editor
+exec=@editor
+category=Office

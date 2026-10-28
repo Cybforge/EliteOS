@@ -699,7 +699,6 @@ void vfs_load_tar(const void *data, size_t size)
 void vfs_init(void)
 {
     root = node_new("", VN_DIR);
-    const char *dirs[] = { "/bin", "/dev", "/etc", "/home", "/home/user", "/home/user/Desktop",
-                           "/home/user/Documents", "/home/user/Pictures", "/tmp" };
+    const char *dirs[] = { "/bin", "/dev", "/etc", "/home", "/tmp", "/usr", "/var" };
     for (unsigned i = 0; i < ARRAY_SIZE(dirs); i++) vfs_mkdir(dirs[i]);
 }

@@ -1,5 +1,6 @@
 /* Files: icon/list views, sidebar places, history, context menu, rename. */
 #include <wm.h>
+#include <sys.h>
 #include <vfs.h>
 #include <mm.h>
 #include <dev.h>
@@ -155,15 +156,34 @@ static void commit_prompt(struct files *f)
         if (!strcmp(f->ent[i].name, f->input)) f->sel = i;
 }
 
-static const struct { const char *name; const char *path; int icon; } places[] = {
-    { "Home", "/home/user", ICON_HOME },
-    { "Desktop", "/home/user/Desktop", ICON_FOLDER },
-    { "Documents", "/home/user/Documents", ICON_FOLDER },
-    { "Pictures", "/home/user/Pictures", ICON_FOLDER },
-    { "Programs", "/bin", ICON_FOLDER },
-    { "Devices", "/dev", ICON_FOLDER },
-    { "Computer", "/", ICON_FOLDER },
-};
+/* the sidebar: the signed-in user's folders, then fixed system places */
+struct place { const char *name; char path[VFS_PATH_MAX]; int icon; };
+
+static int build_places(struct place *pl)
+{
+    int n = 0;
+    static const struct { const char *name; const char *rel; int icon; } user_places[] = {
+        { N_("Home"), "", ICON_HOME }, { N_("Desktop"), "Desktop", ICON_FOLDER },
+        { N_("Documents"), "Documents", ICON_FOLDER }, { N_("Pictures"), "Pictures", ICON_FOLDER },
+        { N_("Downloads"), "Downloads", ICON_FOLDER },
+    };
+    for (unsigned i = 0; i < ARRAY_SIZE(user_places); i++) {
+        pl[n].name = user_places[i].name;
+        if (user_places[i].rel[0]) session_path(user_places[i].rel, pl[n].path, sizeof(pl[n].path));
+        else strlcpy(pl[n].path, session_home(), sizeof(pl[n].path));
+        pl[n].icon = user_places[i].icon;
+        n++;
+    }
+    static const struct { const char *name; const char *path; int icon; } system_places[] = {
+        { N_("Programs"), "/bin", ICON_FOLDER }, { N_("Devices"), "/dev", ICON_FOLDER }, { N_("Computer"), "/", ICON_FOLDER },
+    };
+    for (unsigned i = 0; i < ARRAY_SIZE(system_places); i++, n++) {
+        pl[n].name = system_places[i].name;
+        strlcpy(pl[n].path, system_places[i].path, sizeof(pl[n].path));
+        pl[n].icon = system_places[i].icon;
+    }
+    return n;
+}
 
 static rect_t item_rect(struct files *f, rect_t area, int i, int *per_row)
 {
@@ -188,16 +208,18 @@ static void files_paint(app_t *a, surface_t *s)
     int sbw = 180;
     gfx_fill(s, 0, 0, sbw, H, theme.panel);
     gfx_fill(s, sbw, 0, 1, H, ALPHA(0xFFFFFF, 12));
-    gfx_text(s, font_ui_md, 18, 16, "Places", theme.text_faint);
-    for (unsigned i = 0; i < ARRAY_SIZE(places); i++) {
-        rect_t r = R(8, 40 + (int)i * 36, sbw - 16, 32);
+    gfx_text(s, font_ui_md, 18, 16, tr("Places"), theme.text_faint);
+    struct place places[8];
+    int nplaces = build_places(places);
+    for (int i = 0; i < nplaces; i++) {
+        rect_t r = R(8, 40 + i * 36, sbw - 16, 32);
         bool cur = !strcmp(f->path, places[i].path);
         if (ui_list_item(u, r, cur)) go(f, places[i].path, true);
         icon_draw(s, places[i].icon, r.x + 10, r.y + 6, 20);
-        gfx_text(s, font_ui, r.x + 40, r.y + 8, places[i].name, theme.text);
+        gfx_text(s, font_ui, r.x + 40, r.y + 8, tr(places[i].name), theme.text);
     }
     /* mounted disks */
-    int py = 40 + (int)ARRAY_SIZE(places) * 36 + 10;
+    int py = 40 + nplaces * 36 + 10;
     struct fs_mount *here = NULL;
     for (struct fs_mount *m = vfs_mounts(); m; m = m->next) {
         size_t pl = strlen(m->path);
@@ -438,7 +460,7 @@ int files_main(void *arg)
 {
     struct files *f = kzalloc(sizeof(*f));
     if (!f) return 1;
-    strcpy(f->path, "/home/user");
+    strlcpy(f->path, session_home(), sizeof(f->path));
     if (arg) {
         struct vfs_stat st;
         if (!vfs_stat(arg, &st) && st.type == VN_DIR) strlcpy(f->path, arg, sizeof(f->path));

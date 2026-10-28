@@ -9,13 +9,16 @@
 #include <mm.h>
 #include <cpu.h>
 #include <sched.h>
+#include <net.h>
+#include <sys.h>
 
 #define TB_H 52
 
 static int SW, SH;
 static surface_t *wall, *wall_blur;
+static int gen_style = -1;              /* the wallpaper style that wall holds */
 int wallpaper_style;
-const char *wallpaper_names[] = { "Aurora", "Nebula", "Sunset", "Ocean", "Graphite" };
+const char *wallpaper_names[] = { N_("Aurora"), N_("Nebula"), N_("Sunset"), N_("Ocean"), N_("Graphite") };
 int wallpaper_count = 5;
 
 /* ------------------------------------------------------------------------
@@ -272,18 +275,18 @@ static void acrylic(surface_t *s, rect_t r, int radius, color_t tint)
 
 
 /* ------------------------------------------------------------------------
- * persistent settings: kept in <first disk>/zenith/settings.cfg
+ * settings of the signed-in user: <home>/.config/zenith/settings.conf
+ * (system-wide ones such as language, keyboard and time zone are in
+ * /etc/zenith/system.conf and belong to sys/)
  * ---------------------------------------------------------------------- */
 
-extern int rtc_utc_offset_min;
-
-struct saved_settings { int wallpaper, accent, transparency, animations, layout, tz, welcome, volume, muted; };
+struct saved_settings { int wallpaper, accent, transparency, animations, welcome, volume, muted; };
 
 static struct saved_settings saved;
 static bool settings_known;
 static bool welcome_seen;
 
-/* the Welcome tour opens on the first boot only (when settings can be kept) */
+/* the Welcome tour opens on a user's first sign-in only (when settings can be kept) */
 bool settings_welcome_seen(void)
 {
     bool seen = welcome_seen;
@@ -297,70 +300,43 @@ static void settings_current(struct saved_settings *c)
     c->accent = accent_index;
     c->transparency = ui_transparency;
     c->animations = ui_animations;
-    c->layout = keyboard_layout;
-    c->tz = rtc_utc_offset_min;
     c->welcome = welcome_seen;
     c->volume = audio_volume();
     c->muted = audio_muted();
 }
 
-static bool settings_path(char *out, size_t n)
-{
-    struct fs_mount *m = vfs_mounts();
-    if (!m) return false;
-    snprintf(out, n, "%s/zenith/settings.cfg", m->path);
-    return true;
-}
-
 void settings_load(void)
 {
-    char path[96];
+    if (!session.active) return;
+    struct conf *c = &session.prefs;
+    wallpaper_style = (int)CLAMP(conf_int(c, "wallpaper", 0), 0, wallpaper_count - 1);
+    theme_set_accent((int)conf_int(c, "accent", accent_index));
+    ui_transparency = conf_int(c, "transparency", 1) != 0;
+    ui_animations = conf_int(c, "animations", 1) != 0;
+    welcome_seen = conf_int(c, "welcome_seen", 0) != 0;
+    if (conf_get(c, "volume", NULL)) audio_set_volume((int)conf_int(c, "volume", audio_volume()));
+    audio_set_muted(conf_int(c, "muted", 0) != 0);
     settings_current(&saved);
     settings_known = true;
-    if (!settings_path(path, sizeof(path))) return;
-    size_t n;
-    char *d = vfs_read_file(path, &n);
-    if (!d) return;
-    for (char *line = d; line && *line;) {
-        char *next = strchr(line, '\n');
-        if (next) *next++ = 0;
-        char *eq = strchr(line, '=');
-        if (eq) {
-            *eq = 0;
-            long v = strtol(eq + 1, NULL, 10);
-            if (!strcmp(line, "wallpaper")) wallpaper_style = CLAMP((int)v, 0, wallpaper_count - 1);
-            else if (!strcmp(line, "accent")) theme_set_accent((int)v);
-            else if (!strcmp(line, "transparency")) ui_transparency = v != 0;
-            else if (!strcmp(line, "animations")) ui_animations = v != 0;
-            else if (!strcmp(line, "layout")) keyboard_layout = CLAMP((int)v, 0, 1);
-            else if (!strcmp(line, "timezone")) rtc_utc_offset_min = CLAMP((int)v, -720, 840);
-            else if (!strcmp(line, "welcome_seen")) welcome_seen = v != 0;
-            else if (!strcmp(line, "volume")) audio_set_volume((int)v);
-            else if (!strcmp(line, "muted")) audio_set_muted(v != 0);
-        }
-        line = next;
-    }
-    kfree(d);
-    settings_current(&saved);
-    klog("desktop: settings loaded from %s", path);
+    klog("desktop: settings of %s loaded", session.user);
 }
 
 void settings_autosave(void)
 {
+    if (!session.active) return;
     struct saved_settings c;
     settings_current(&c);
     if (!settings_known || !memcmp(&c, &saved, sizeof(c))) return;
     saved = c;
-    char path[96], dir[96];
-    if (!settings_path(path, sizeof(path))) return;
-    vfs_dirname(path, dir, sizeof(dir));
-    vfs_mkdir(dir);
-    char buf[256];
-    int len = snprintf(buf, sizeof(buf),
-                       "# ZenithOS settings\nwallpaper=%d\naccent=%d\ntransparency=%d\nanimations=%d\nlayout=%d\ntimezone=%d\n"
-                       "welcome_seen=%d\nvolume=%d\nmuted=%d\n",
-                       c.wallpaper, c.accent, c.transparency, c.animations, c.layout, c.tz, c.welcome, c.volume, c.muted);
-    vfs_write_file(path, buf, (size_t)len);
+    struct conf *p = &session.prefs;
+    conf_set_int(p, "wallpaper", c.wallpaper);
+    conf_set_int(p, "accent", c.accent);
+    conf_set_int(p, "transparency", c.transparency);
+    conf_set_int(p, "animations", c.animations);
+    conf_set_int(p, "welcome_seen", c.welcome);
+    conf_set_int(p, "volume", c.volume);
+    conf_set_int(p, "muted", c.muted);
+    session_save_prefs();
 }
 
 /* ------------------------------------------------------------------------
@@ -370,22 +346,22 @@ void settings_autosave(void)
 struct dicon {
     char label[48];
     int icon;
-    char app[16];
-    char path[128];
+    char exec[160];             /* "@app" or a program path, from a .zapp file on the desktop */
+    char path[128];             /* a file or folder to open */
     rect_t r;
 };
 
-static struct dicon dicons[24];
+static struct dicon dicons[32];
 static int ndicons;
 static int dicon_sel = -1;
 
-static void add_dicon(const char *label, int icon, const char *app, const char *path)
+static void add_dicon(const char *label, int icon, const char *exec, const char *path)
 {
     if (ndicons >= (int)ARRAY_SIZE(dicons)) return;
     struct dicon *d = &dicons[ndicons];
     strlcpy(d->label, label, sizeof(d->label));
     d->icon = icon;
-    strlcpy(d->app, app ? app : "", sizeof(d->app));
+    strlcpy(d->exec, exec ? exec : "", sizeof(d->exec));
     strlcpy(d->path, path ? path : "", sizeof(d->path));
     int per_col = MAX(1, (SH - TB_H - 16) / 100);
     int col = ndicons / per_col, row = ndicons % per_col;
@@ -395,26 +371,37 @@ static void add_dicon(const char *label, int icon, const char *app, const char *
 
 int file_icon_for(const char *name);
 
+/* the desktop shows what is in ~/Desktop (shortcuts are .zapp files) and the mounted disks */
 static void load_desktop_icons(void)
 {
     ndicons = 0;
-    add_dicon("Home", ICON_HOME, "files", NULL);
-    add_dicon("Terminal", ICON_TERMINAL, "terminal", NULL);
-    add_dicon("System Monitor", ICON_MONITOR, "sysmon", NULL);
-    add_dicon("Zenith 3D", ICON_CUBE, "demo3d", NULL);
-    add_dicon("Mandelbrot", ICON_FRACTAL, "mandel", NULL);
-    add_dicon("Blocks", ICON_TETRIS, "tetris", NULL);
+    char dir[VFS_PATH_MAX];
+    if (session_path("Desktop", dir, sizeof(dir))) {
+        struct vfs_dirent de;
+        for (int i = 0; ndicons < (int)ARRAY_SIZE(dicons) - 8 && vfs_readdir(dir, i, &de) == 0; i++) {
+            if (de.name[0] == '.') continue;
+            char p[VFS_PATH_MAX];
+            snprintf(p, sizeof(p), "%s/%s", dir, de.name);
+            size_t l = strlen(de.name);
+            if (l > 5 && !strcmp(de.name + l - 5, ".zapp")) {
+                struct conf c;
+                conf_init(&c);
+                if (conf_load(&c, p)) {
+                    char label[48];
+                    strlcpy(label, conf_get(&c, "name", de.name), sizeof(label));
+                    int ic = icon_by_name(conf_get(&c, "icon", "app"));
+                    add_dicon(tr(label), ic ? ic : ICON_APP, conf_get(&c, "exec", ""), NULL);
+                }
+                conf_free(&c);
+            } else {
+                add_dicon(de.name, de.type == VN_DIR ? ICON_FOLDER : file_icon_for(de.name), NULL, p);
+            }
+        }
+    }
     for (struct fs_mount *m = vfs_mounts(); m; m = m->next) {
         char label[48];
-        snprintf(label, sizeof(label), "%s", m->label[0] ? m->label : "Disk");
+        snprintf(label, sizeof(label), "%s", m->label[0] ? m->label : tr("Disk"));
         add_dicon(label, ICON_DISK, NULL, m->path);
-    }
-    struct vfs_dirent de[12];
-    int n = vfs_list("/home/user/Desktop", de, 12);
-    for (int i = 0; i < n; i++) {
-        char p[128];
-        snprintf(p, sizeof(p), "/home/user/Desktop/%s", de[i].name);
-        add_dicon(de[i].name, de[i].type == VN_DIR ? ICON_FOLDER : file_icon_for(de[i].name), NULL, p);
     }
 }
 
@@ -439,8 +426,16 @@ void open_path(const char *path);
 static void dicon_open(int i)
 {
     struct dicon *d = &dicons[i];
-    if (d->app[0]) app_launch(d->app);
-    else if (d->path[0]) open_path(d->path);
+    if (d->exec[0]) {
+        struct launcher l;
+        memset(&l, 0, sizeof(l));
+        strlcpy(l.name, d->label, sizeof(l.name));
+        strlcpy(l.exec, d->exec, sizeof(l.exec));
+        l.icon = d->icon;
+        launcher_run(&l);
+    } else if (d->path[0]) {
+        open_path(d->path);
+    }
 }
 
 /* ------------------------------------------------------------------------
@@ -448,7 +443,7 @@ static void dicon_open(int i)
  * ---------------------------------------------------------------------- */
 
 struct tb_item {
-    const struct app_info *app;
+    const struct launcher *app;
     window_t *win;
     int icon;
     rect_t r;
@@ -461,7 +456,6 @@ static rect_t tb_start_r;
 static bool tb_start_hover;
 static uint64_t tb_hover_since;
 static bool tooltip_shown;
-static const char *pinned_apps[] = { "files", "terminal", "editor", "sysmon", "demo3d", "settings" };
 static int cpu_hist[48];
 static uint64_t last_cpu_sample;
 static char clock_str[16], date_str[24];
@@ -500,11 +494,27 @@ static void draw_osd(surface_t *s, rect_t clip)
 
 static rect_t tb_rect(void) { return R(0, SH - TB_H, SW, TB_H); }
 
-static const struct app_info *app_for_window(window_t *w)
+static const struct launcher *app_for_window(window_t *w)
 {
-    for (int i = 0; i < app_count; i++)
-        if (app_table[i].icon == w->icon && w->icon) return &app_table[i];
+    for (int i = 0; i < launchers_count(); i++) {
+        const struct launcher *l = launcher_get(i);
+        if (l->builtin && l->icon == w->icon && w->icon) return l;
+    }
     return NULL;
+}
+
+/* "files,terminal,..." from the user's settings, else the system default */
+static int pinned_list(const char *key, const char *fallback_key, char out[][32], int max)
+{
+    const char *list = conf_get(&session.prefs, key, conf_get(&sysconf, fallback_key, ""));
+    int n = 0;
+    for (const char *p = list; *p && n < max;) {
+        const char *e = strchr(p, ',');
+        size_t l = e ? (size_t)(e - p) : strlen(p);
+        if (l && l < 32) { memcpy(out[n], p, l); out[n][l] = 0; n++; }
+        p += l + (e ? 1 : 0);
+    }
+    return n;
 }
 
 void desktop_windows_changed(void)
@@ -513,8 +523,10 @@ void desktop_windows_changed(void)
     int nw = wm_window_list(wins, 32);
     ntb = 0;
     bool used[32] = { 0 };
-    for (unsigned p = 0; p < ARRAY_SIZE(pinned_apps); p++) {
-        const struct app_info *a = app_find(pinned_apps[p]);
+    char pins[12][32];
+    int npins = pinned_list("taskbar_pinned", "taskbar_pinned", pins, 12);
+    for (int p = 0; p < npins; p++) {
+        const struct launcher *a = launcher_find(pins[p]);
         if (!a) continue;
         struct tb_item *it = &tb[ntb++];
         it->app = a;
@@ -543,7 +555,7 @@ void desktop_windows_changed(void)
     wm_dirty(tb_rect());
 }
 
-static int count_windows_of(const struct app_info *a)
+static int count_windows_of(const struct launcher *a)
 {
     int n = 0;
     for (window_t *w = wm_list; w; w = w->next)
@@ -589,10 +601,9 @@ static void draw_taskbar(surface_t *s, rect_t clip)
     gfx_text_center(s, font_ui_md, R(tray_clock_r.x, tr.y + 6, cw, 20), clock_str, theme.text);
     gfx_text_center(s, font_ui, R(tray_clock_r.x, tr.y + 25, cw, 20), date_str, theme.text_dim);
 
-    const char *kl = keyboard_layout == LAYOUT_DE ? "DE" : "US";
     tray_kbd_r = R(x - 36, tr.y + 10, 32, TB_H - 20);
     x -= 36;
-    gfx_text_center(s, font_ui_md, tray_kbd_r, kl, theme.text);
+    gfx_text_center(s, font_ui_md, tray_kbd_r, keymap_short(), theme.text);
 
     if (audio_available()) {
         tray_snd_r = R(x - 32, tr.y + 10, 28, TB_H - 20);
@@ -607,7 +618,24 @@ static void draw_taskbar(surface_t *s, rect_t clip)
 
     tray_net_r = R(x - 32, tr.y + 10, 28, TB_H - 20);
     x -= 32;
-    icon_draw(s, ICON_NETWORK, tray_net_r.x + 4, tray_net_r.y + 6, 20);
+    {
+        /* the real state of the network: no adapter, cable out, waiting for an address, online */
+        int st = 0;                                    /* 0 none, 1 no link, 2 no address yet, 3 online */
+        for (int i = 0; i < net_iface_count(); i++) {
+            struct net_info ni;
+            if (!net_iface_get(i, &ni)) continue;
+            int v = !ni.link ? 1 : !ni.ip ? 2 : 3;
+            if (v > st) st = v;
+        }
+        icon_draw(s, ICON_ETHERNET, tray_net_r.x + 4, tray_net_r.y + 6, 20);
+        if (st == 0) {
+            gfx_line_w(s, (float)tray_net_r.x + 5, (float)tray_net_r.y + 26, (float)tray_net_r.x + 23, (float)tray_net_r.y + 8, 2.2f, theme.danger);
+        } else {
+            color_t dot = st == 3 ? theme.success : st == 2 ? theme.warning : theme.danger;
+            gfx_circle(s, (float)tray_net_r.x + 22, (float)tray_net_r.y + 24, 4.2f, HEX(0x101326));
+            gfx_circle(s, (float)tray_net_r.x + 22, (float)tray_net_r.y + 24, 3.2f, dot);
+        }
+    }
 
     tray_cpu_r = R(x - 84, tr.y + 10, 76, TB_H - 20);
     rect_t g = tray_cpu_r;
@@ -643,6 +671,11 @@ static int sm_power_hover = -1;
 static bool sm_power_btn_hover;
 static int sm_results[32];
 static int sm_nresults;
+static int sm_tiles[256];
+static int sm_ntiles;
+static bool sm_all;                   /* showing every app instead of the pinned ones */
+static int sm_scroll;                 /* first visible tile row */
+#define SM_ROWS 3
 
 static rect_t sm_rect(void)
 {
@@ -655,13 +688,14 @@ static rect_t sm_full_rect(void)
     return R((SW - SM_W) / 2 - 30, SH - TB_H - SM_H - 40, SM_W + 60, SM_H + 70);
 }
 
-static int sm_score(const struct app_info *a)
+static int sm_score(const struct launcher *a)
 {
     if (!sm_search[0]) return 1;
-    if (!strncasecmp(a->name, sm_search, strlen(sm_search))) return 4;
+    const char *name = tr(a->name);
+    if (!strncasecmp(name, sm_search, strlen(sm_search))) return 4;
     if (!strncasecmp(a->id, sm_search, strlen(sm_search))) return 3;
-    if (strstr_ci(a->name, sm_search)) return 2;
-    if (strstr_ci(a->desc, sm_search)) return 1;
+    if (strstr_ci(name, sm_search)) return 2;
+    if (strstr_ci(tr(a->desc), sm_search) || strstr_ci(a->category, sm_search)) return 1;
     return 0;
 }
 
@@ -669,9 +703,24 @@ static void sm_filter(void)
 {
     sm_nresults = 0;
     for (int score = 4; score >= 1; score--)
-        for (int i = 0; i < app_count && sm_nresults < 32; i++)
-            if (sm_score(&app_table[i]) == score) sm_results[sm_nresults++] = i;
+        for (int i = 0; i < launchers_count() && sm_nresults < 32; i++)
+            if (sm_score(launcher_get(i)) == score) sm_results[sm_nresults++] = i;
     if (sm_sel >= sm_nresults) sm_sel = MAX(0, sm_nresults - 1);
+}
+
+/* the tiles of the start menu: the pinned apps, or every app */
+static void sm_build_tiles(void)
+{
+    sm_ntiles = 0;
+    if (sm_all) {
+        for (int i = 0; i < launchers_count() && sm_ntiles < (int)ARRAY_SIZE(sm_tiles); i++) sm_tiles[sm_ntiles++] = i;
+        return;
+    }
+    char pins[32][32];
+    int n = pinned_list("startmenu_pinned", "startmenu_pinned", pins, 32);
+    for (int i = 0; i < n; i++)
+        for (int k = 0; k < launchers_count(); k++)
+            if (!strcmp(launcher_get(k)->id, pins[i])) { sm_tiles[sm_ntiles++] = k; break; }
 }
 
 static void sm_set(bool open)
@@ -683,6 +732,9 @@ static void sm_set(bool open)
         sm_search[0] = 0;
         sm_sel = 0;
         sm_power_open = false;
+        sm_all = false;
+        sm_scroll = 0;
+        sm_build_tiles();
         sm_filter();
     }
     wm_dirty(sm_full_rect());
@@ -695,7 +747,13 @@ static rect_t sm_tile_rect(rect_t m, int i)
 {
     int cols = 6, tw = 96, th = 90;
     int gx = m.x + (SM_W - cols * tw) / 2;
-    return R(gx + (i % cols) * tw, m.y + 118 + (i / cols) * th, tw, th);
+    return R(gx + (i % cols) * tw, m.y + 118 + (i / cols - sm_scroll) * th, tw, th);
+}
+
+static bool sm_tile_visible(int i)
+{
+    int row = i / 6 - sm_scroll;
+    return row >= 0 && row < SM_ROWS;
 }
 
 static rect_t sm_result_rect(rect_t m, int i)
@@ -704,7 +762,9 @@ static rect_t sm_result_rect(rect_t m, int i)
 }
 
 static rect_t sm_power_rect(rect_t m) { return R(m.x + SM_W - 64, m.y + SM_H - 56, 44, 44); }
-static rect_t sm_power_menu_rect(rect_t m) { return R(m.x + SM_W - 200, m.y + SM_H - 56 - 104, 180, 96); }
+static rect_t sm_power_menu_rect(rect_t m) { return R(m.x + SM_W - 200, m.y + SM_H - 56 - 180, 180, 176); }
+
+static rect_t sm_allapps_rect(rect_t m) { return R(m.x + SM_W - 160, m.y + 80, 128, 24); }
 
 static void draw_start_menu(surface_t *s, rect_t clip)
 {
@@ -726,21 +786,30 @@ static void draw_start_menu(surface_t *s, rect_t clip)
         int ex = gfx_text(s, font_ui_lg, sb.x + 44, ty, sm_search, theme.text);
         if ((uptime_ms() / 500) % 2 == 0) gfx_fill(s, ex + 1, ty + 1, 2, font_height(font_ui_lg) - 2, theme.accent);
     } else {
-        gfx_text(s, font_ui_lg, sb.x + 44, ty, "Search apps, settings and files", theme.text_faint);
+        gfx_text(s, font_ui_lg, sb.x + 44, ty, tr("Search apps, settings and files"), theme.text_faint);
     }
 
     if (!sm_search[0]) {
-        gfx_text(s, font_ui_bold, m.x + 32, m.y + 86, "Pinned", theme.text);
-        gfx_text_right(s, font_ui, m.x + SM_W - 32, m.y + 88, "All apps", theme.text_dim);
-        for (int i = 0; i < app_count && i < 18; i++) {
+        gfx_text(s, font_ui_bold, m.x + 32, m.y + 86, sm_all ? tr("All apps") : tr("Pinned"), theme.text);
+        gfx_text_right(s, font_ui, m.x + SM_W - 32, m.y + 88, sm_all ? tr("Pinned") : tr("All apps"), theme.text_dim);
+        for (int i = 0; i < sm_ntiles; i++) {
+            if (!sm_tile_visible(i)) continue;
+            const struct launcher *l = launcher_get(sm_tiles[i]);
             rect_t t = sm_tile_rect(m, i);
             if (i == sm_hover) gfx_round_rect(s, t.x + 4, t.y, t.w - 8, t.h - 6, 10, ALPHA(0xFFFFFF, 22));
-            icon_draw(s, app_table[i].icon, t.x + (t.w - 40) / 2, t.y + 10, 40);
+            icon_draw(s, l->icon, t.x + (t.w - 40) / 2, t.y + 10, 40);
             surface_t sub = *s;
             sub.clip = rect_intersect(s->clip, R(t.x + 4, t.y, t.w - 8, t.h));
-            int tw = font_text_width(font_ui, app_table[i].name);
-            gfx_text_ellipsis(&sub, font_ui, t.x + MAX(6, (t.w - tw) / 2), t.y + 58, t.w - 12, app_table[i].name,
-                              theme.text);
+            const char *nm = tr(l->name);
+            int tw = font_text_width(font_ui, nm);
+            gfx_text_ellipsis(&sub, font_ui, t.x + MAX(6, (t.w - tw) / 2), t.y + 58, t.w - 12, nm, theme.text);
+        }
+        int rows = (sm_ntiles + 5) / 6;
+        if (rows > SM_ROWS) {
+            /* scroll indicator */
+            int th = 3 * 90 - 10, bh = MAX(24, th * SM_ROWS / rows);
+            int by = m.y + 118 + (th - bh) * sm_scroll / MAX(1, rows - SM_ROWS);
+            gfx_round_rect(s, m.x + SM_W - 14, by, 4, bh, 2, ALPHA(0xFFFFFF, 70));
         }
         /* system card */
         rect_t card = R(m.x + 24, m.y + SM_H - 150, SM_W - 48, 70);
@@ -749,28 +818,34 @@ static void draw_start_menu(surface_t *s, rect_t clip)
         char l1[96], l2[128];
         snprintf(l1, sizeof(l1), "%s %s \"%s\"", ZENITH_NAME, ZENITH_VERSION, ZENITH_CODENAME);
         uint64_t up = uptime_ms() / 1000;
-        snprintf(l2, sizeof(l2), "%d CPU cores  ·  %lu MiB RAM  ·  up %lu:%02lu:%02lu", ncpus,
-                 (pmm_total_pages() * 4096) >> 20, up / 3600, (up / 60) % 60, up % 60);
+        snprintf(l2, sizeof(l2), "%d %s  ·  %lu MiB RAM  ·  %s %lu:%02lu:%02lu", ncpus, tr("CPU cores"),
+                 (pmm_total_pages() * 4096) >> 20, tr("up"), up / 3600, (up / 60) % 60, up % 60);
         gfx_text(s, font_ui_bold, card.x + 72, card.y + 14, l1, theme.text);
         gfx_text(s, font_ui, card.x + 72, card.y + 38, l2, theme.text_dim);
     } else {
-        gfx_text(s, font_ui_bold, m.x + 32, m.y + 80, sm_nresults ? "Best matches" : "No results", theme.text);
+        gfx_text(s, font_ui_bold, m.x + 32, m.y + 80, sm_nresults ? tr("Best matches") : tr("No results"), theme.text);
         for (int i = 0; i < sm_nresults && i < 9; i++) {
-            const struct app_info *a = &app_table[sm_results[i]];
+            const struct launcher *a = launcher_get(sm_results[i]);
             rect_t r = sm_result_rect(m, i);
             if (i == sm_sel) gfx_round_rect(s, r.x, r.y, r.w, r.h, 8, ALPHA(theme.accent, 90));
             else if (i == sm_hover) gfx_round_rect(s, r.x, r.y, r.w, r.h, 8, ALPHA(0xFFFFFF, 20));
             icon_draw(s, a->icon, r.x + 10, r.y + 7, 28);
-            gfx_text(s, font_ui_md, r.x + 50, r.y + 5, a->name, theme.text);
-            gfx_text(s, font_ui, r.x + 50, r.y + 22, a->desc, theme.text_dim);
+            gfx_text(s, font_ui_md, r.x + 50, r.y + 5, tr(a->name), theme.text);
+            gfx_text(s, font_ui, r.x + 50, r.y + 22, tr(a->desc), theme.text_dim);
         }
     }
 
-    /* bottom bar */
+    /* bottom bar: who is signed in, and power */
     gfx_fill(s, m.x + 1, m.y + SM_H - 68, SM_W - 2, 1, ALPHA(0xFFFFFF, 20));
     gfx_circle(s, (float)(m.x + 46), (float)(m.y + SM_H - 34), 17, theme.accent);
-    gfx_text_center(s, font_ui_bold, R(m.x + 29, m.y + SM_H - 51, 34, 34), "U", 0xFFFFFFFFu);
-    gfx_text(s, font_ui_md, m.x + 72, m.y + SM_H - 43, "User", theme.text);
+    {
+        char ini[8] = "?";
+        const char *p = session.fullname[0] ? session.fullname : session.user;
+        uint32_t cp = utf8_next(&p);
+        if (cp) ini[utf8_encode(cp >= 'a' && cp <= 'z' ? cp - 32 : cp, ini)] = 0;
+        gfx_text_center(s, font_ui_bold, R(m.x + 29, m.y + SM_H - 51, 34, 34), ini, 0xFFFFFFFFu);
+    }
+    gfx_text(s, font_ui_md, m.x + 72, m.y + SM_H - 43, session.fullname[0] ? session.fullname : session.user, theme.text);
     rect_t pb = sm_power_rect(m);
     if (sm_power_btn_hover || sm_power_open) gfx_round_rect(s, pb.x, pb.y, pb.w, pb.h, 8, ALPHA(0xFFFFFF, 24));
     icon_draw(s, ICON_POWER, pb.x + 11, pb.y + 11, 22);
@@ -780,13 +855,13 @@ static void draw_start_menu(surface_t *s, rect_t clip)
         gfx_shadow(s, pm.x, pm.y + 4, pm.w, pm.h, 10, 16, 110);
         gfx_round_rect(s, pm.x, pm.y, pm.w, pm.h, 10, HEX(0x232842));
         gfx_round_outline(s, pm.x, pm.y, pm.w, pm.h, 10, ALPHA(0xFFFFFF, 30));
-        const char *items[] = { "Restart", "Shut down" };
-        int icons[] = { ICON_RESTART, ICON_POWER };
-        for (int i = 0; i < 2; i++) {
+        const char *items[] = { N_("Lock"), N_("Sign out"), N_("Restart"), N_("Shut down") };
+        int icons[] = { ICON_LOCK, ICON_LOGOUT, ICON_RESTART, ICON_POWER };
+        for (int i = 0; i < 4; i++) {
             rect_t it = R(pm.x + 6, pm.y + 6 + i * 42, pm.w - 12, 40);
             if (i == sm_power_hover) gfx_round_rect(s, it.x, it.y, it.w, it.h, 8, ALPHA(0xFFFFFF, 24));
             icon_draw(s, icons[i], it.x + 10, it.y + 10, 20);
-            gfx_text(s, font_ui_md, it.x + 42, it.y + 11, items[i], theme.text);
+            gfx_text(s, font_ui_md, it.x + 42, it.y + 11, tr(items[i]), theme.text);
         }
     }
 }
@@ -803,7 +878,7 @@ static bool sm_mouse(int x, int y, int pressed, int released)
     sm_power_btn_hover = rect_has(sm_power_rect(m), x, y);
     if (sm_power_open) {
         rect_t pm = sm_power_menu_rect(m);
-        for (int i = 0; i < 2; i++)
+        for (int i = 0; i < 4; i++)
             if (rect_has(R(pm.x + 6, pm.y + 6 + i * 42, pm.w - 12, 40), x, y)) sm_power_hover = i;
         if ((released & BTN_LEFT) && sm_power_hover >= 0) {
             power_action(sm_power_hover);
@@ -815,8 +890,15 @@ static bool sm_mouse(int x, int y, int pressed, int released)
         }
     }
     if (!sm_search[0]) {
-        for (int i = 0; i < app_count && i < 18; i++)
-            if (rect_has(sm_tile_rect(m, i), x, y)) sm_hover = i;
+        for (int i = 0; i < sm_ntiles; i++)
+            if (sm_tile_visible(i) && rect_has(sm_tile_rect(m, i), x, y)) sm_hover = i;
+        if ((released & BTN_LEFT) && rect_has(sm_allapps_rect(m), x, y)) {
+            sm_all = !sm_all;
+            sm_scroll = 0;
+            sm_build_tiles();
+            wm_dirty(sm_full_rect());
+            return true;
+        }
     } else {
         for (int i = 0; i < sm_nresults && i < 9; i++)
             if (rect_has(sm_result_rect(m, i), x, y)) sm_hover = i;
@@ -827,9 +909,9 @@ static bool sm_mouse(int x, int y, int pressed, int released)
             sm_power_open = !sm_power_open;
             wm_dirty(sm_full_rect());
         } else if (sm_hover >= 0) {
-            int idx = sm_search[0] ? sm_results[sm_hover] : sm_hover;
+            int idx = sm_search[0] ? sm_results[sm_hover] : sm_tiles[sm_hover];
             sm_set(false);
-            app_launch(app_table[idx].id);
+            launcher_run(launcher_get(idx));
         }
     }
     return true;
@@ -842,7 +924,7 @@ static bool sm_mouse(int x, int y, int pressed, int released)
 static bool ctx_open;
 static rect_t ctx_r;
 static int ctx_hover = -1;
-static const char *ctx_items[] = { "Open Terminal", "Next wallpaper", "Refresh desktop", "Settings", "About ZenithOS" };
+static const char *ctx_items[] = { N_("Open Terminal"), N_("Next wallpaper"), N_("Refresh desktop"), N_("Settings"), N_("About ZenithOS") };
 #define CTX_N 5
 
 static void draw_ctx(surface_t *s, rect_t clip)
@@ -854,7 +936,7 @@ static void draw_ctx(surface_t *s, rect_t clip)
     for (int i = 0; i < CTX_N; i++) {
         rect_t it = R(ctx_r.x + 5, ctx_r.y + 5 + i * 34, ctx_r.w - 10, 32);
         if (i == ctx_hover) gfx_round_rect(s, it.x, it.y, it.w, it.h, 7, ALPHA(theme.accent, 110));
-        gfx_text(s, font_ui, it.x + 12, it.y + 8, ctx_items[i], theme.text);
+        gfx_text(s, font_ui, it.x + 12, it.y + 8, tr(ctx_items[i]), theme.text);
     }
 }
 
@@ -1006,7 +1088,7 @@ static const char *tb_label(int i)
 {
     if (i < 0 || i >= ntb) return NULL;
     if (tb[i].win) return tb[i].win->title;
-    return tb[i].app ? tb[i].app->name : NULL;
+    return tb[i].app ? tr(tb[i].app->name) : NULL;
 }
 
 static void draw_tooltip(surface_t *s, rect_t clip)
@@ -1045,6 +1127,10 @@ void desktop_draw_background(surface_t *s, rect_t clip)
 
 void desktop_draw_overlay(surface_t *s, rect_t clip)
 {
+    if (login_active()) {
+        login_draw(s, clip, wall_blur);
+        return;
+    }
     draw_taskbar(s, clip);
     draw_start_menu(s, clip);
     draw_ctx(s, clip);
@@ -1059,12 +1145,18 @@ int desktop_taskbar_h(void) { return TB_H; }
 static void power_action(int which)
 {
     sm_set(false);
-    app_launch(which == 0 ? "@reboot" : "@poweroff");
+    switch (which) {
+    case 0: login_start(true); break;                            /* lock */
+    case 1: desktop_sign_out(); break;
+    case 2: app_launch("@reboot"); break;
+    default: app_launch("@poweroff"); break;
+    }
 }
 
 bool desktop_mouse_overlay(int x, int y, int buttons, int pressed, int released, int wheel)
 {
     UNUSED(buttons);
+    if (login_active()) return login_mouse(x, y, pressed);
     if (wheel && rect_has(tray_snd_r, x, y)) {
         audio_set_muted(false);
         audio_set_volume(audio_volume() + wheel * 5);
@@ -1102,6 +1194,12 @@ bool desktop_mouse_overlay(int x, int y, int buttons, int pressed, int released,
     }
     if (sm_open) {
         rect_t m = sm_rect();
+        if (wheel && rect_has(m, x, y) && !sm_search[0]) {
+            int rows = (sm_ntiles + 5) / 6;
+            sm_scroll = CLAMP(sm_scroll + (wheel > 0 ? 1 : -1), 0, MAX(0, rows - SM_ROWS));
+            wm_dirty(sm_full_rect());
+            return true;
+        }
         if (rect_has(m, x, y) || (sm_power_open && rect_has(sm_power_menu_rect(m), x, y)))
             return sm_mouse(x, y, pressed, released);
         if (pressed && !rect_has(tb_start_r, x, y)) {
@@ -1151,7 +1249,7 @@ bool desktop_mouse_overlay(int x, int y, int buttons, int pressed, int released,
                     wm_focus_locked(it->win);
                 }
             } else if (it->app) {
-                app_launch(it->app->id);
+                launcher_run(it->app);
             }
             if (tooltip_shown) { dirty_tooltip(); tooltip_shown = false; }
         } else if (rect_has(tray_show_r, x, y)) {
@@ -1162,8 +1260,10 @@ bool desktop_mouse_overlay(int x, int y, int buttons, int pressed, int released,
         } else if (rect_has(tray_cpu_r, x, y)) {
             app_launch("sysmon");
         } else if (rect_has(tray_kbd_r, x, y)) {
-            keyboard_layout = keyboard_layout == LAYOUT_DE ? LAYOUT_US : LAYOUT_DE;
-            desktop_notify("Keyboard layout", keymap_name(keyboard_layout), ICON_SETTINGS);
+            keymap_next();
+            conf_set(&sysconf, "keyboard", keymap_current());
+            sys_save_conf();
+            desktop_notify(tr("Keyboard layout"), keymap_long(), ICON_SETTINGS);
             wm_dirty(tr);
         } else if (rect_has(tray_net_r, x, y)) {
             app_launch("netinfo");
@@ -1172,7 +1272,7 @@ bool desktop_mouse_overlay(int x, int y, int buttons, int pressed, int released,
             osd_show();
         }
     }
-    if ((pressed & BTN_MIDDLE) && tb_hover >= 0 && tb[tb_hover].app) app_launch(tb[tb_hover].app->id);
+    if ((pressed & BTN_MIDDLE) && tb_hover >= 0 && tb[tb_hover].app) launcher_run(tb[tb_hover].app);
     return true;
 }
 
@@ -1203,7 +1303,7 @@ void desktop_mouse_background(int x, int y, int buttons, int pressed, int releas
 
 bool desktop_key(int key, uint32_t ch, int mods, bool pressed)
 {
-    UNUSED(mods);
+    if (login_active()) return login_key(key, ch, mods, pressed);
     if (ctx_open && pressed && key == KEY_ESC) {
         ctx_open = false;
         wm_dirty(R(ctx_r.x - 20, ctx_r.y - 20, ctx_r.w + 40, ctx_r.h + 44));
@@ -1217,7 +1317,7 @@ bool desktop_key(int key, uint32_t ch, int mods, bool pressed)
         if (sm_search[0] && sm_nresults) {
             int idx = sm_results[sm_sel];
             sm_set(false);
-            app_launch(app_table[idx].id);
+            launcher_run(launcher_get(idx));
         }
         return true;
     }
@@ -1254,7 +1354,7 @@ static void update_clock(void)
     settings_autosave();
     char c[16], d[24];
     snprintf(c, sizeof(c), "%02d:%02d", dt.hour, dt.minute);
-    snprintf(d, sizeof(d), "%02d.%02d.%04d", dt.day, dt.month, dt.year);
+    format_date(&dt, d, sizeof(d));
     if (strcmp(c, clock_str) || strcmp(d, date_str)) {
         strcpy(clock_str, c);
         strcpy(date_str, d);
@@ -1264,13 +1364,14 @@ static void update_clock(void)
 
 bool desktop_tick(uint64_t now)
 {
+    bool login_anim = login_tick();
     static int seen_mounts = -1;
     if (seen_mounts != vfs_mount_generation()) {
         seen_mounts = vfs_mount_generation();
         load_desktop_icons();
         wm_dirty(R(0, 0, SW, SH));
     }
-    bool anim = false;
+    bool anim = login_anim;
     update_clock();
     if (osd_until && now > osd_until) {
         osd_until = 0;
@@ -1343,12 +1444,49 @@ void desktop_init(int w, int h)
         lut_up[i] = (uint8_t)(up * 200.0f);
         lut_dn[i] = (uint8_t)(dn * 230.0f);
     }
-    settings_load();
     uint64_t t0 = uptime_ms();
     gen_wallpaper(wall, wallpaper_style);
+    gen_style = wallpaper_style;
     make_blur();
     klog("desktop: wallpaper '%s' generated in %lu ms", wallpaper_names[wallpaper_style], uptime_ms() - t0);
+    launchers_reload();
     load_desktop_icons();
     update_clock();
     desktop_windows_changed();
+}
+
+static int session_boot(void *arg)
+{
+    UNUSED(arg);
+    if (wallpaper_style != gen_style) {
+        gen_style = wallpaper_style;
+        wm_set_wallpaper(wallpaper_style);
+    }
+    sched_sleep(300);
+    audio_sound(SND_STARTUP);
+    if (!settings_welcome_seen()) app_launch("welcome");
+    return 0;
+}
+
+/* a user signed in (login screen, or automatically): their settings, their desktop */
+void desktop_session_started(void)
+{
+    static bool first = true;
+    settings_load();
+    launchers_reload();
+    load_desktop_icons();
+    desktop_windows_changed();
+    wm_dirty(R(0, 0, SW, SH));
+    if (first) {
+        first = false;
+        thread_create("session", session_boot, NULL);
+    }
+}
+
+void desktop_sign_out(void)
+{
+    for (window_t *w = wm_list; w; w = w->next) wm_request_close(w);
+    ntoasts = 0;
+    session_logout();
+    login_start(false);
 }

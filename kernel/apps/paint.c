@@ -1,5 +1,6 @@
 /* Paint: brush, eraser, line, rectangle, ellipse, fill, colour picker, undo, BMP save/open. */
 #include <wm.h>
+#include <sys.h>
 #include <mm.h>
 #include <vfs.h>
 #include <image.h>
@@ -313,7 +314,7 @@ int paint_main(void *arg)
     gfx_clear(p->canvas, 0xFFFFFFFFu);
     p->color = HEX(0x7C5CFF);
     p->size = 6;
-    strcpy(p->path, "/home/user/Pictures/drawing.bmp");
+    session_path("Pictures/drawing.bmp", p->path, sizeof(p->path));
     if (arg) {
         surface_t *img = bmp_load(arg);
         if (img) {

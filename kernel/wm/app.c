@@ -8,6 +8,7 @@
 #include <mm.h>
 #include <image.h>
 #include <audio.h>
+#include <sys.h>
 
 int welcome_main(void *arg);
 int about_main(void *arg);
@@ -77,7 +78,7 @@ int user_app_main(void *arg)
 {
     UNUSED(arg);
     char *argv[] = { "/bin/plasma", NULL };
-    if (!proc_spawn("/bin/plasma", 1, argv, NULL, "/home/user"))
+    if (!proc_spawn("/bin/plasma", 1, argv, NULL, session_home()))
         wm_notify("Could not start Plasma", "/bin/plasma is missing", ICON_PLASMA);
     return 0;
 }
@@ -168,7 +169,7 @@ void open_path(const char *path)
     }
     if (magic[0] == 0x7F && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F') {
         char *argv[] = { (char *)path, NULL };
-        proc_spawn(path, 1, argv, NULL, "/home/user");
+        proc_spawn(path, 1, argv, NULL, session_home());
         return;
     }
     launch_with("editor", path);

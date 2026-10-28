@@ -45,6 +45,10 @@ void hash_final(struct hash_ctx *c, uint8_t *out);
 void hash_once(int alg, const void *data, size_t len, uint8_t *out);
 
 void hmac(int alg, const uint8_t *key, size_t klen, const void *data, size_t len, uint8_t *out);
+/* password hashing: PBKDF2-HMAC-SHA256 */
+void pbkdf2_sha256(const uint8_t *pass, size_t plen, const uint8_t *salt, size_t slen, uint32_t iterations,
+                   uint8_t *out, size_t outlen);
+
 void hkdf_extract(int alg, const uint8_t *salt, size_t slen, const uint8_t *ikm, size_t ilen, uint8_t *prk);
 void hkdf_expand(int alg, const uint8_t *prk, const uint8_t *info, size_t ilen, uint8_t *out, size_t olen);
 

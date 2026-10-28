@@ -15,7 +15,7 @@ $(OUT):
 	@mkdir -p $@
 
 $(OUT)/crypto_vectors: crypto_vectors.c $(CRYPTO) | $(OUT)
-	@gcc $(CFLAGS) -o $@ $< $(K)/crypto/sha2.c $(K)/crypto/aes.c $(K)/crypto/chacha.c
+	@gcc $(CFLAGS) -o $@ $< $(K)/crypto/sha2.c $(K)/crypto/aes.c $(K)/crypto/chacha.c $(K)/crypto/pbkdf2.c
 
 $(OUT)/vectors.h: gen_vectors.py | $(OUT)
 	@cd $(OUT) && python3 $(CURDIR)/gen_vectors.py > vectors.h
@@ -32,5 +32,5 @@ $(OUT)/x509_chain: x509_chain.c $(K)/net/x509.c $(CRYPTO) | $(OUT)
 run: $(OUT)/crypto_vectors $(OUT)/pubkey $(OUT)/roots $(OUT)/x509_chain
 	@echo "== symmetric crypto" && $(OUT)/crypto_vectors | tail -1
 	@echo "== public key crypto" && $(OUT)/pubkey | tail -1
-	@echo "== root certificates" && $(OUT)/roots ../../assets/certs/ca-bundle.pem | tail -1
+	@echo "== root certificates" && $(OUT)/roots ../../root/etc/ssl/certs/ca-bundle.pem | tail -1
 	@echo "== certificate chains" && mkdir -p $(OUT)/pki && cd $(OUT)/pki && sh $(CURDIR)/mkpki.sh >/dev/null 2>&1 && ../x509_chain | tail -1

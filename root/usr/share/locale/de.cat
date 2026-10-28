@@ -1,0 +1,184 @@
+#name=Deutsch
+#date=dmy.
+# English text <TAB> German text
+Home	Home
+Desktop	Schreibtisch
+Documents	Dokumente
+Pictures	Bilder
+Downloads	Downloads
+Programs	Programme
+Devices	Geräte
+Computer	Computer
+Places	Orte
+host to ping	Rechner zum Anpingen
+Wallpaper	Hintergrundbild
+Generated live by the compositor	Live vom Compositor erzeugt
+Accent colour	Akzentfarbe
+Transparency effects	Transparenzeffekte
+Animations	Animationen
+Language & region	Sprache & Region
+Language, keyboard, time zone and clock	Sprache, Tastatur, Zeitzone und Uhr
+Language	Sprache
+Keyboard layout	Tastaturbelegung
+Switch layouts with Win+Space or from the taskbar	Belegung wechseln mit Win+Leertaste oder in der Taskleiste
+Time zone	Zeitzone
+Search a city or country	Stadt oder Land suchen
+Set the time automatically	Uhrzeit automatisch einstellen
+Network time is off	Netzwerkzeit ist aus
+Synchronised with	Abgeglichen mit
+Waiting to contact	Warte auf Verbindung zu
+Sync now	Jetzt abgleichen
+Hardware clock keeps local time	Hardware-Uhr läuft auf Ortszeit
+Switch this on when Windows is installed next to ZenithOS.	Einschalten, wenn Windows neben ZenithOS installiert ist.
+Users	Benutzer
+Accounts on this computer	Konten auf diesem Computer
+Administrator	Administrator
+Standard user	Standardbenutzer
+  ·  you	  ·  du
+Add a user	Benutzer hinzufügen
+New user	Neuer Benutzer
+Full name	Vollständiger Name
+User name (lower case letters, digits)	Benutzername (Kleinbuchstaben, Ziffern)
+Password	Passwort
+Repeat the password	Passwort wiederholen
+Create	Erstellen
+The user name may only use a-z, 0-9, - and _	Der Benutzername darf nur a-z, 0-9, - und _ enthalten
+Choose a password	Bitte ein Passwort wählen
+The passwords are not the same	Die Passwörter stimmen nicht überein
+That user name is taken	Dieser Benutzername ist schon vergeben
+Could not save the account	Das Konto konnte nicht gespeichert werden
+User created	Benutzer angelegt
+Cancel	Abbrechen
+Protected by a password	Durch ein Passwort geschützt
+No password: anyone can sign in	Kein Passwort: jeder kann sich anmelden
+Change the password	Passwort ändern
+Current password	Aktuelles Passwort
+New password (empty = none)	Neues Passwort (leer = keines)
+Save	Speichern
+The current password is wrong	Das aktuelle Passwort ist falsch
+Password changed	Passwort geändert
+Remove this account	Dieses Konto entfernen
+Account removed (its files stay in the home folder)	Konto entfernt (die Dateien bleiben im Home-Ordner)
+Network	Netzwerk
+No supported network adapter found.	Keine unterstützte Netzwerkkarte gefunden.
+ZenithOS drives Intel, Realtek, AMD, NE2000, Tulip, virtio, VMware and USB adapters	ZenithOS unterstützt Intel, Realtek, AMD, NE2000, Tulip, virtio, VMware und USB-Adapter
+(type netcards in the Terminal). No Wi-Fi yet: plug in a phone and turn on USB tethering.	(im Terminal netcards eingeben). Noch kein WLAN: Handy anstecken und USB-Tethering einschalten.
+Adapter	Adapter
+MAC address	MAC-Adresse
+Link	Verbindung
+IP address	IP-Adresse
+Subnet mask	Subnetzmaske
+Gateway	Gateway
+DNS	DNS
+Connected	Verbunden
+Disconnected	Getrennt
+Not configured	Nicht konfiguriert
+received	empfangen
+sent	gesendet
+Renew address (DHCP)	Adresse erneuern (DHCP)
+All adapters	Alle Adapter
+disconnected	getrennt
+configuring...	wird eingerichtet ...
+  (default)	  (Standard)
+Display	Anzeige
+Current mode	Aktueller Modus
+Graphics adapters	Grafikadapter
+No graphics adapter found on the PCI bus.	Kein Grafikadapter am PCI-Bus gefunden.
+Sound	Ton
+No sound card found (ZenithOS drives Intel HD Audio)	Keine Soundkarte gefunden (ZenithOS unterstützt Intel HD Audio)
+Volume	Lautstärke
+Mute	Stumm
+Try it	Ausprobieren
+Startup	Start
+Notification	Hinweis
+Success	Erfolg
+Error	Fehler
+Open Piano	Klavier öffnen
+Apps	Apps
+Everything in the start menu	Alles aus dem Startmenü
+Open the App Store	App Store öffnen
+built in	eingebaut
+System	System
+cores	Kerne
+Computer name	Computername
+host name	Rechnername
+Apply	Übernehmen
+Use letters, digits and - only	Nur Buchstaben, Ziffern und - verwenden
+Saved. It is used for new network connections.	Gespeichert. Wird bei neuen Netzwerkverbindungen verwendet.
+Storage	Speicher
+installed system, files are kept	installiertes System, Dateien bleiben erhalten
+live session, nothing is kept after a restart	Live-Sitzung, nach einem Neustart bleibt nichts erhalten
+About	Info
+System Log	Systemprotokoll
+Install ZenithOS	ZenithOS installieren
+Sign out	Abmelden
+Restart	Neu starten
+Shut down	Herunterfahren
+Personalization	Personalisierung
+Settings	Einstellungen
+Aurora	Aurora
+Nebula	Nebel
+Sunset	Sonnenuntergang
+Ocean	Ozean
+Graphite	Graphit
+Disk	Datenträger
+Search apps, settings and files	Apps, Einstellungen und Dateien suchen
+All apps	Alle Apps
+Pinned	Angepinnt
+CPU cores	CPU-Kerne
+up	läuft seit
+Best matches	Beste Treffer
+No results	Keine Ergebnisse
+Lock	Sperren
+Open Terminal	Terminal öffnen
+Next wallpaper	Nächstes Hintergrundbild
+Refresh desktop	Desktop aktualisieren
+About ZenithOS	Über ZenithOS
+Wrong password	Falsches Passwort
+No user accounts	Keine Benutzerkonten
+Checking...	Prüfe ...
+Unlock	Entsperren
+Sign in	Anmelden
+2048	2048
+Slide and merge the tiles	Kacheln schieben und verschmelzen
+About this computer	Über diesen Computer
+Zenith Web	Zenith Web
+Browse the web over HTTP	Im Web surfen (HTTP und HTTPS)
+Calculator	Taschenrechner
+Scientific calculator	Wissenschaftlicher Taschenrechner
+Chess	Schach
+Play against a multi-core engine	Gegen eine Mehrkern-Engine spielen
+Clock	Uhr
+Clock, calendar and stopwatch	Uhr, Kalender und Stoppuhr
+Zenith 3D	Zenith 3D
+Real-time software 3D renderer	3D-Software-Renderer in Echtzeit
+Text Editor	Texteditor
+Write notes and code	Notizen und Code schreiben
+Files	Dateien
+Browse and manage your files	Dateien durchsuchen und verwalten
+Images	Bilder
+View pictures and screenshots	Bilder und Screenshots ansehen
+Copy the system to a disk	Das System auf einen Datenträger kopieren
+Kernel messages	Kernel-Meldungen
+Mandelbrot	Mandelbrot
+Fractal explorer on all CPU cores	Fraktal-Explorer auf allen CPU-Kernen
+Minesweeper	Minesweeper
+Clear the field without a bang	Das Feld ohne Knall räumen
+Network status and tools	Netzwerkstatus und Werkzeuge
+Paint	Paint
+Draw with brushes and colors	Mit Pinseln und Farben zeichnen
+Piano	Klavier
+Play music on eight instruments	Musik auf acht Instrumenten spielen
+Plasma	Plasma
+Ring-3 user program demo	Demo eines Ring-3-Benutzerprogramms
+Personalize ZenithOS	ZenithOS anpassen
+Snake	Snake
+The classic snake game	Das klassische Schlangenspiel
+System Monitor	Systemmonitor
+Per-core CPU, memory, processes	CPU pro Kern, Speicher, Prozesse
+Terminal	Terminal
+Command line shell	Kommandozeile
+Blocks	Blöcke
+Falling-blocks puzzle game	Puzzlespiel mit fallenden Blöcken
+Welcome	Willkommen
+Tour of ZenithOS	Rundgang durch ZenithOS

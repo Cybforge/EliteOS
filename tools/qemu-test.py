@@ -87,7 +87,7 @@ class QMP:
         self.cmd('input-send-event', events=evs)
         time.sleep(0.03)
 
-    layout = 'de'
+    layout = 'us'          # what the guest's keyboard layout is; steps can switch it with 'layout de'
 
     def type(self, text):
         for ch in text:

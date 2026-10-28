@@ -1,0 +1,5 @@
+name=2048
+comment=Slide and merge the tiles
+icon=2048
+exec=@2048
+category=Games

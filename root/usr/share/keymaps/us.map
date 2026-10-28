@@ -1,0 +1,53 @@
+#name=English (US)
+#short=US
+#altgr=no
+# key  plain  shift  AltGr  AltGr+Shift   (- = nothing)
+grave      `  ~  -  -
+1          1  !  -  -
+2          2  @  -  -
+3          3  #  -  -
+4          4  $  -  -
+5          5  %  -  -
+6          6  ^  -  -
+7          7  &  -  -
+8          8  *  -  -
+9          9  (  -  -
+0          0  )  -  -
+minus      -  _  -  -
+equal      =  +  -  -
+q          q  Q  -  -
+w          w  W  -  -
+e          e  E  -  -
+r          r  R  -  -
+t          t  T  -  -
+y          y  Y  -  -
+u          u  U  -  -
+i          i  I  -  -
+o          o  O  -  -
+p          p  P  -  -
+lbrace     [  {  -  -
+rbrace     ]  }  -  -
+a          a  A  -  -
+s          s  S  -  -
+d          d  D  -  -
+f          f  F  -  -
+g          g  G  -  -
+h          h  H  -  -
+j          j  J  -  -
+k          k  K  -  -
+l          l  L  -  -
+semicolon  ;  :  -  -
+apostrophe '  "  -  -
+backslash  \  |  -  -
+102nd      \  |  -  -
+z          z  Z  -  -
+x          x  X  -  -
+c          c  C  -  -
+v          v  V  -  -
+b          b  B  -  -
+n          n  N  -  -
+m          m  M  -  -
+comma      ,  <  -  -
+dot        .  >  -  -
+slash      /  ?  -  -
+space      U+0020  U+0020

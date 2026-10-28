@@ -8,6 +8,7 @@
  * the cursor, into an off-screen buffer that is then copied to the
  * framebuffer.
  */
+#include <sys.h>
 #include "wm_internal.h"
 #include <audio.h>
 #include <dev.h>
@@ -1134,7 +1135,7 @@ static void handle_key(int key, bool pressed)
     case KEY_LSHIFT: case KEY_RSHIFT: bit = MOD_SHIFT; break;
     case KEY_LCTRL: case KEY_RCTRL: bit = MOD_CTRL; break;
     case KEY_LALT: bit = MOD_ALT; break;
-    case KEY_RALT: bit = keyboard_layout == LAYOUT_DE ? MOD_ALTGR : MOD_ALT; break;
+    case KEY_RALT: bit = keymap_altgr() ? MOD_ALTGR : MOD_ALT; break;
     case KEY_LMETA: case KEY_RMETA: bit = MOD_SUPER; break;
     }
     if (bit) {
@@ -1162,10 +1163,14 @@ static void handle_key(int key, bool pressed)
     uint32_t ch = 0;
     if (pressed) {
         int tmods = mods;
-        if (keyboard_layout == LAYOUT_DE && (mods & MOD_CTRL) && (mods & MOD_ALT)) tmods |= MOD_ALTGR;
+        if (keymap_altgr() && (mods & MOD_CTRL) && (mods & MOD_ALT)) tmods |= MOD_ALTGR;
         ch = (mods & (MOD_CTRL | MOD_ALT)) && !(tmods & MOD_ALTGR) ? 0 : keymap_translate(key, tmods);
     }
 
+    if (login_active()) {
+        login_key(key, ch, mods, pressed);
+        return;
+    }
     if (pressed) {
         if ((mods & MOD_ALT) && key == KEY_TAB) {
             desktop_alt_tab(!alt_tabbing, (mods & MOD_SHIFT) != 0);
@@ -1185,6 +1190,14 @@ static void handle_key(int key, bool pressed)
             return;
         }
         if ((mods & MOD_SUPER) && key == KEY_E) { app_launch("files"); return; }
+        if ((mods & MOD_SUPER) && key == KEY_L) { login_start(true); return; }
+        if ((mods & MOD_SUPER) && key == KEY_SPACE) {
+            keymap_next();
+            conf_set(&sysconf, "keyboard", keymap_current());
+            sys_save_conf();
+            desktop_notify(tr("Keyboard layout"), keymap_long(), ICON_SETTINGS);
+            return;
+        }
         if ((mods & MOD_SUPER) && (key == KEY_LEFT || key == KEY_RIGHT) && wm_focus_win) {
             window_t *w = wm_focus_win;
             int half = SW / 2, avail = SH - desktop_taskbar_h();
@@ -1258,7 +1271,10 @@ bool wm_save_screenshot(char *path_out, size_t n)
 {
     struct datetime dt;
     rtc_now(&dt);
-    snprintf(path_out, n, "/home/user/Pictures/Screenshot %04d-%02d-%02d %02d.%02d.%02d.bmp",
+    char dir[VFS_PATH_MAX];
+    session_path("Pictures", dir, sizeof(dir));
+    sys_mkdir_p(dir);
+    snprintf(path_out, n, "%s/Screenshot %04d-%02d-%02d %02d.%02d.%02d.bmp", dir,
              dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
     size_t img = (size_t)SW * SH * 4;
     size_t total = 54 + img;
@@ -1333,7 +1349,6 @@ static int wm_thread(void *arg)
     return 0;
 }
 
-static int boot_apps(void *arg);
 
 void wm_init(void)
 {
@@ -1355,15 +1370,17 @@ void wm_init(void)
     bootcon_enable(false);
     thread_create_ex("compositor", wm_thread, NULL, 1, -1, NULL, 64 * 1024);
     wm_ready = true;
-    thread_create("session", boot_apps, NULL);
     klog("wm: %dx%d compositor running%s", SW, SH, fb_swap ? " (RGB swap)" : "");
-}
-
-static int boot_apps(void *arg)
-{
-    UNUSED(arg);
-    sched_sleep(400);
-    audio_sound(SND_STARTUP);
-    if (!settings_welcome_seen()) app_launch("welcome");
-    return 0;
+    /* who is using this computer? a login screen, or straight in when there is only a password-less account */
+    mutex_lock(&wm_mtx);
+    if (users_need_login()) {
+        login_start(false);
+    } else {
+        const char *name = conf_get(&sysconf, "autologin", "");
+        if (!*name && users_count()) name = users_get(0)->name;
+        if (*name && session_login(name, "")) desktop_session_started();
+        else login_start(false);
+    }
+    mutex_unlock(&wm_mtx);
+    wm_kick();
 }

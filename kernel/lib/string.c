@@ -90,6 +90,8 @@ int isalpha(int c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
 int isalnum(int c) { return isdigit(c) || isalpha(c); }
 int isspace(int c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'; }
 int isprint(int c) { return c >= 32 && c < 127; }
+int islower(int c) { return c >= 'a' && c <= 'z'; }
+int isupper(int c) { return c >= 'A' && c <= 'Z'; }
 
 int strcasecmp(const char *a, const char *b)
 {
@@ -210,3 +212,42 @@ long strtol(const char *s, char **end, int base)
 }
 
 int atoi(const char *s) { return (int)strtol(s, NULL, 10); }
+
+void *memchr(const void *s, int c, size_t n)
+{
+    const unsigned char *p = s;
+    for (size_t i = 0; i < n; i++)
+        if (p[i] == (unsigned char)c) return (void *)(p + i);
+    return NULL;
+}
+
+static void swap_bytes(unsigned char *a, unsigned char *b, size_t n)
+{
+    while (n--) { unsigned char t = *a; *a++ = *b; *b++ = t; }
+}
+
+static void sift_down(unsigned char *base, size_t size, size_t start, size_t end,
+                      int (*cmp)(const void *, const void *))
+{
+    size_t root = start;
+    while (root * 2 + 1 <= end) {
+        size_t child = root * 2 + 1, sw = root;
+        if (cmp(base + sw * size, base + child * size) < 0) sw = child;
+        if (child + 1 <= end && cmp(base + sw * size, base + (child + 1) * size) < 0) sw = child + 1;
+        if (sw == root) return;
+        swap_bytes(base + root * size, base + sw * size, size);
+        root = sw;
+    }
+}
+
+/* heapsort: no recursion, no allocation, O(n log n) in the worst case */
+void qsort(void *b, size_t n, size_t size, int (*cmp)(const void *, const void *))
+{
+    unsigned char *base = b;
+    if (n < 2) return;
+    for (size_t start = (n - 2) / 2 + 1; start-- > 0;) sift_down(base, size, start, n - 1, cmp);
+    for (size_t end = n - 1; end > 0; end--) {
+        swap_bytes(base, base + end * size, size);
+        sift_down(base, size, 0, end - 1, cmp);
+    }
+}

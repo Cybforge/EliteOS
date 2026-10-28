@@ -361,7 +361,7 @@ bool hda_init(void)
     if (!ok) { klog("hda: no codec with a usable output"); return false; }
     if (!setup_stream(iss)) return false;
     present = true;
-    klog("hda: %s:%02x.%x, %s, %d output pin%s", pci_device_name(pd->vendor, pd->device), pd->dev, pd->fn, name,
+    klog("hda: %04x:%04x at %02x:%02x.%x, %s, %d output pin%s", pd->vendor, pd->device, pd->bus, pd->dev, pd->fn, name,
          npins, npins == 1 ? "" : "s");
     return true;
 }

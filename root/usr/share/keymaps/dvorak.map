@@ -1,0 +1,40 @@
+#name=English (Dvorak)
+#short=DV
+#altgr=no
+# key  plain  shift  AltGr  AltGr+Shift   (- = nothing)
+minus      [  {  -  -
+equal      ]  }  -  -
+q          '  "  -  -
+w          ,  <  -  -
+e          .  >  -  -
+r          p  P  -  -
+t          y  Y  -  -
+y          f  F  -  -
+u          g  G  -  -
+i          c  C  -  -
+o          r  R  -  -
+p          l  L  -  -
+lbrace     /  ?  -  -
+rbrace     =  +  -  -
+a          a  A  -  -
+s          o  O  -  -
+d          e  E  -  -
+f          u  U  -  -
+g          i  I  -  -
+h          d  D  -  -
+j          h  H  -  -
+k          t  T  -  -
+l          n  N  -  -
+semicolon  s  S  -  -
+apostrophe -  _  -  -
+z          ;  :  -  -
+x          q  Q  -  -
+c          j  J  -  -
+v          k  K  -  -
+b          x  X  -  -
+n          b  B  -  -
+m          m  M  -  -
+comma      w  W  -  -
+dot        v  V  -  -
+slash      z  Z  -  -
+space      U+0020  U+0020

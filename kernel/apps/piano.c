@@ -208,18 +208,18 @@ static int key_at(rect_t kb, int mx, int my)
 
 static const char *key_hint(struct piano *p, int midi)
 {
-    static const char *names[] = { "Y", "S", "X", "D", "C", "V", "G", "B", "H", "N", "J", "M", ",", "L", ".", "Ö", "-",
-                                   "Q", "2", "W", "3", "E", "R", "5", "T", "6", "Z", "7", "U", "I", "9", "O", "0", "P" };
+    /* the label is whatever character that physical key types in the current layout */
+    static char buf[4][8];
+    static int next;
     int base = 60 + p->octave * 12 - 12;
     for (unsigned i = 0; i < ARRAY_SIZE(keymap); i++) {
-        if (base + keymap[i].semi == midi) {
-            if (keyboard_layout == LAYOUT_US) {
-                static const char *us[] = { "Z", "S", "X", "D", "C", "V", "G", "B", "H", "N", "J", "M", ",", "L", ".", ";", "/",
-                                            "Q", "2", "W", "3", "E", "R", "5", "T", "6", "Y", "7", "U", "I", "9", "O", "0", "P" };
-                return us[i];
-            }
-            return names[i];
-        }
+        if (base + keymap[i].semi != midi) continue;
+        uint32_t cp = keymap_char(keymap[i].key, false);
+        if (!cp) return NULL;
+        if (cp >= 'a' && cp <= 'z') cp -= 32;
+        char *b = buf[next++ & 3];
+        b[utf8_encode(cp, b)] = 0;
+        return b;
     }
     return NULL;
 }

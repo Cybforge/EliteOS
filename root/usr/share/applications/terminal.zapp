@@ -1,0 +1,5 @@
+name=Terminal
+comment=Command line shell
+icon=terminal
+exec=@terminal
+category=System

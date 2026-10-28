@@ -17,6 +17,7 @@
 #include <vfs.h>
 #include <x86.h>
 #include <crypto.h>
+#include <sys.h>
 #include "netdev.h"
 
 #define MAX_IF 8
@@ -428,6 +429,34 @@ static bool udp_wait(struct udp_sock *s, uint64_t deadline)
     return s->len > 0;
 }
 
+/* one UDP question and its answer (NTP): sends from a random port, waits for a datagram back */
+bool net_udp_request(uint32_t dst, uint16_t dport, const void *req, size_t rlen, void *resp, size_t *rn, int timeout_ms)
+{
+    struct udp_sock *s = kzalloc(sizeof(*s));
+    if (!s) return false;
+    uint16_t r;
+    random_bytes(&r, sizeof(r));
+    uint16_t port = (uint16_t)(30000 + (r % 30000));
+    if (!udp_bind(s, port, NULL)) { kfree(s); return false; }
+    bool ok = udp_send(dst, port, dport, req, rlen);
+    if (ok) {
+        uint64_t deadline = uptime_ms() + (uint64_t)timeout_ms;
+        ok = udp_wait(s, deadline);
+        while (ok && s->from != dst) {                      /* ignore datagrams from anyone else */
+            s->len = 0;
+            ok = udp_wait(s, deadline);
+        }
+        if (ok) {
+            size_t n = MIN((size_t)s->len, *rn);
+            memcpy(resp, s->buf, n);
+            *rn = n;
+        }
+    }
+    udp_unbind(s);
+    kfree(s);
+    return ok;
+}
+
 /* ------------------------------------------------------------------------
  * DHCP
  * ---------------------------------------------------------------------- */
@@ -458,7 +487,11 @@ static size_t dhcp_build(struct iface *ifc, struct dhcp *d, uint8_t type, uint32
     if (req_ip) { *o++ = 50; *o++ = 4; uint32_t v = htonl(req_ip); memcpy(o, &v, 4); o += 4; }
     if (server) { *o++ = 54; *o++ = 4; uint32_t v = htonl(server); memcpy(o, &v, 4); o += 4; }
     *o++ = 61; *o++ = 7; *o++ = 1; memcpy(o, ifc->nd->mac, 6); o += 6;         /* client id */
-    *o++ = 12; *o++ = 6; memcpy(o, "zenith", 6); o += 6;
+    {
+        const char *hn = sys_hostname();
+        size_t hl = MIN(strlen(hn), (size_t)63);
+        *o++ = 12; *o++ = (uint8_t)hl; memcpy(o, hn, hl); o += hl;
+    }
     *o++ = 55; *o++ = 3; *o++ = 1; *o++ = 3; *o++ = 6;
     *o++ = 255;
     return (size_t)(o - (uint8_t *)d);
@@ -825,4 +858,5 @@ void net_init(void)
     if (!nifs) klog("net: no supported network adapter yet (USB adapters are picked up when plugged in)");
     thread_create_ex("net", net_thread, NULL, 1, -1, NULL, 32 * 1024);
     thread_create("netcfg", netcfg_thread, NULL);
+    ntp_init();
 }

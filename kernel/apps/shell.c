@@ -13,6 +13,7 @@
 #include <block.h>
 #include <audio.h>
 #include <crypto.h>
+#include <sys.h>
 
 #define HIST 64
 #define MAXARGS 32
@@ -92,7 +93,7 @@ static void resolve(struct shell *sh, const char *p, char *outp)
 {
     char tmp[VFS_PATH_MAX];
     if (p[0] == '~') {
-        snprintf(tmp, sizeof(tmp), "/home/user%s", p + 1);
+        snprintf(tmp, sizeof(tmp), "%s%s", session_home(), p + 1);
         p = tmp;
     }
     vfs_resolve(sh->cwd, p, outp, VFS_PATH_MAX);
@@ -812,7 +813,7 @@ static int c_neofetch(struct shell *sh, int argc, char **argv)
     int ni = 0;
     uint64_t up = uptime_ms() / 1000;
     uint64_t total = pmm_total_pages() * PAGE_SIZE, used = total - pmm_free_pages() * PAGE_SIZE;
-    snprintf(info[ni++], 96, "\x1b[1;95muser\x1b[0m@\x1b[1;95mzenith\x1b[0m");
+    snprintf(info[ni++], 96, "\x1b[1;95m%s\x1b[0m@\x1b[1;95m%s\x1b[0m", session.user[0] ? session.user : "nobody", sys_hostname());
     snprintf(info[ni++], 96, "\x1b[90m-----------\x1b[0m");
     snprintf(info[ni++], 96, "\x1b[95mOS\x1b[0m: ZenithOS %s \"%s\" x86_64", ZENITH_VERSION, ZENITH_CODENAME);
     snprintf(info[ni++], 96, "\x1b[95mKernel\x1b[0m: zenith %s SMP", ZENITH_VERSION);
@@ -1002,12 +1003,18 @@ static int c_apps(struct shell *sh, int argc, char **argv)
 static int c_layout(struct shell *sh, int argc, char **argv)
 {
     if (argc > 1) {
-        if (!strcasecmp(argv[1], "de")) keyboard_layout = LAYOUT_DE;
-        else if (!strcasecmp(argv[1], "us")) keyboard_layout = LAYOUT_US;
-        else { err(sh, "layout", "use 'de' or 'us'"); return 1; }
+        if (!keymap_set(argv[1])) {
+            err(sh, "layout", "no such layout (run 'layout' to list them)");
+            return 1;
+        }
+        conf_set(&sysconf, "keyboard", keymap_current());
+        sys_save_conf();
         wm_invalidate_all();
     }
-    pr(sh, "Keyboard layout: %s\n", keymap_name(keyboard_layout));
+    struct kbd_info k[16];
+    int n = keymap_layouts(k, 16);
+    for (int i = 0; i < n; i++)
+        pr(sh, "  %s %-8s %s\n", !strcmp(k[i].id, keymap_current()) ? C_GREEN "*" C_RESET : " ", k[i].id, k[i].name);
     return 0;
 }
 
@@ -1434,10 +1441,11 @@ static void execute(struct shell *sh, char *line)
 static void prompt(struct shell *sh)
 {
     char dir[VFS_PATH_MAX];
-    if (!strncmp(sh->cwd, "/home/user", 10)) snprintf(dir, sizeof(dir), "~%s", sh->cwd + 10);
+    size_t hl = strlen(session_home());
+    if (!strncmp(sh->cwd, session_home(), hl) && (!sh->cwd[hl] || sh->cwd[hl] == '/')) snprintf(dir, sizeof(dir), "~%s", sh->cwd + hl);
     else strlcpy(dir, sh->cwd, sizeof(dir));
-    pr(sh, "\x1b[38;2;176;140;255m\x1b[1muser@zenith\x1b[0m \x1b[38;2;80;200;255m%s\x1b[0m %s❯\x1b[0m ", dir,
-       sh->last_status ? C_RED : C_GREEN);
+    pr(sh, "\x1b[38;2;176;140;255m\x1b[1m%s@%s\x1b[0m \x1b[38;2;80;200;255m%s\x1b[0m %s❯\x1b[0m ",
+       session.user[0] ? session.user : "nobody", sys_hostname(), dir, sh->last_status ? C_RED : C_GREEN);
 }
 
 static int display_len(const char *s, int bytes)
@@ -1635,7 +1643,7 @@ int shell_main(void *arg)
     struct tty *tty = arg;
     struct shell *sh = kzalloc(sizeof(*sh));
     sh->tty = tty;
-    strcpy(sh->cwd, "/home/user");
+    strlcpy(sh->cwd, session_home(), sizeof(sh->cwd));
     pr(sh, "\x1b[1mZenithOS %s\x1b[0m \"%s\"  \x1b[90m·  type \x1b[0m\x1b[96mhelp\x1b[0m\x1b[90m for commands, "
            "\x1b[0m\x1b[96mneofetch\x1b[0m\x1b[90m for a summary\x1b[0m\n\n",
        ZENITH_VERSION, ZENITH_CODENAME);

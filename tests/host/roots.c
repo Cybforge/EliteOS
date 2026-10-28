@@ -10,8 +10,8 @@ void *krealloc(void *p, size_t n) { return realloc(p, n); }
 void kfree(void *p) { free(p); }
 void klog(const char *f, ...) {}
 void random_bytes(void *o, size_t n) {}
-char _ca_bundle[1] = "", _ca_bundle_end[1];
 #include "vfs.h"
+struct fs_mount *vfs_mounts(void) { return NULL; }
 int vfs_list(const char *p, struct vfs_dirent *d, int m) { return 0; }
 char *vfs_read_file(const char *p, size_t *n) { return NULL; }
 int main(int argc, char **argv) {

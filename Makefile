@@ -51,7 +51,6 @@ $(BUILD)/kernel/%.S.o: kernel/%.S
 	@$(CC) $(KAFLAGS) -c $< -o $@
 
 $(BUILD)/kernel/gfx/fonts.S.o: $(wildcard assets/fonts/*.zft)
-$(BUILD)/kernel/net/certs.S.o: assets/certs/ca-bundle.pem
 
 # two-pass link: the second pass embeds the symbol table for stack traces
 $(BUILD)/ksyms0.c: tools/gensyms.py

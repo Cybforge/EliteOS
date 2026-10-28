@@ -21,6 +21,20 @@ bool net_iface_get(int i, struct net_info *ni);
 int  net_card_list(void (*cb)(void *ctx, const char *driver, const char *family, uint16_t vendor, uint16_t device,
                               const char *model),
                    void *ctx);
+bool net_udp_request(uint32_t dst, uint16_t dport, const void *req, size_t rlen, void *resp, size_t *rn, int timeout_ms);
+
+/* network time (SNTP, net/ntp.c) */
+struct ntp_status {
+    bool enabled, synced;
+    char server[64];
+    int64_t last_offset;                    /* seconds the clock was off at the last sync */
+    int64_t last_sync;                      /* UTC time of the last sync */
+    char error[64];
+};
+void ntp_status(struct ntp_status *out);
+void ntp_sync_now(void);
+void ntp_init(void);                    /* wake the sync thread */
+
 bool net_dhcp(int timeout_ms);              /* every interface with a link */
 bool net_resolve(const char *host, uint32_t *ip, int timeout_ms);
 int  net_ping(uint32_t ip, uint16_t seq, int timeout_ms);          /* rtt ms, -1 on timeout */

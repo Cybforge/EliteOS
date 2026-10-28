@@ -1,0 +1,5 @@
+name=System Monitor
+comment=Per-core CPU, memory, processes
+icon=monitor
+exec=@sysmon
+category=System

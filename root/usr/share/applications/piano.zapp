@@ -1,0 +1,5 @@
+name=Piano
+comment=Play music on eight instruments
+icon=piano
+exec=@piano
+category=Multimedia

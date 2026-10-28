@@ -52,10 +52,8 @@ void input_push(const struct raw_input *ev);
 bool input_pop(struct raw_input *ev);
 void *input_chan(void);
 
-/* keymaps */
-enum { LAYOUT_US, LAYOUT_DE };
-extern int keyboard_layout;
+/* keymaps: layouts are files, see sys.h (keymap_set, keymap_layouts ...) */
 uint32_t keymap_translate(int key, int mods);
-const char *keymap_name(int layout);
+uint32_t keymap_char(int key, bool shift);
 
 #endif

@@ -3,6 +3,7 @@
  * undo, search, auto-indent.
  */
 #include <wm.h>
+#include <sys.h>
 #include <vfs.h>
 #include <mm.h>
 #include <tty.h>
@@ -166,7 +167,7 @@ static void load(struct editor *e, const char *path)
 
 static bool save(struct editor *e)
 {
-    if (!e->path[0]) { e->bar = 1; strcpy(e->input, "/home/user/Documents/untitled.txt"); return false; }
+    if (!e->path[0]) { e->bar = 1; session_path("Documents/untitled.txt", e->input, sizeof(e->input)); return false; }
     size_t len;
     char *t = get_text(e, &len);
     int r = vfs_write_file(e->path, t, len);
@@ -367,9 +368,9 @@ static void ed_paint(app_t *a, surface_t *s)
         e->path[0] = 0;
         e->modified = false;
     }
-    if (ui_button(u, R(78, 8, 64, 32), "Open", BTN_FLAT)) { e->bar = 2; strlcpy(e->input, e->path[0] ? e->path : "/home/user/", sizeof(e->input)); }
+    if (ui_button(u, R(78, 8, 64, 32), "Open", BTN_FLAT)) { e->bar = 2; strlcpy(e->input, e->path[0] ? e->path : session_home(), sizeof(e->input)); }
     if (ui_button(u, R(146, 8, 64, 32), "Save", BTN_FLAT)) save(e);
-    if (ui_button(u, R(214, 8, 80, 32), "Save as", BTN_FLAT)) { e->bar = 1; strlcpy(e->input, e->path[0] ? e->path : "/home/user/Documents/untitled.txt", sizeof(e->input)); }
+    if (ui_button(u, R(214, 8, 80, 32), "Save as", BTN_FLAT)) { e->bar = 1; if (e->path[0]) strlcpy(e->input, e->path, sizeof(e->input)); else session_path("Documents/untitled.txt", e->input, sizeof(e->input)); }
     if (ui_button(u, R(298, 8, 64, 32), "Find", BTN_FLAT)) { e->bar = 3; }
     char title[160];
     snprintf(title, sizeof(title), "%s%s", e->path[0] ? vfs_basename(e->path) : "Untitled", e->modified ? "  ●" : "");
@@ -593,7 +594,7 @@ static int ed_event(app_t *a, struct gui_event *ev)
         size_t n;
         switch (ev->key) {
         case KEY_S: save(e); break;
-        case KEY_O: e->bar = 2; strlcpy(e->input, e->path[0] ? e->path : "/home/user/", sizeof(e->input)); break;
+        case KEY_O: e->bar = 2; strlcpy(e->input, e->path[0] ? e->path : session_home(), sizeof(e->input)); break;
         case KEY_F: e->bar = 3; break;
         case KEY_Z: do_undo(e); break;
         case KEY_A: e->sy = 0; e->sx = 0; e->cy = e->n - 1; e->cx = e->lines[e->cy].len; break;

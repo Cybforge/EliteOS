@@ -1,0 +1,5 @@
+name=Zenith Web
+comment=Browse the web over HTTP
+icon=browser
+exec=@browser
+category=Internet

@@ -1,0 +1,5 @@
+name=Files
+comment=Browse and manage your files
+icon=files
+exec=@files
+category=System

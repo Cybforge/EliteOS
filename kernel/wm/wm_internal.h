@@ -38,5 +38,15 @@ void desktop_alt_tab(bool start, bool reverse);
 void desktop_alt_release(void);
 void desktop_toggle_start(void);
 void desktop_notify(const char *title, const char *body, int icon);
+void desktop_session_started(void);
+void desktop_sign_out(void);          /* a user has signed in: apply their settings, open their desktop */
+
+/* login and lock screen (wm/login.c) */
+bool login_active(void);
+void login_start(bool lock);
+void login_draw(surface_t *s, rect_t clip, surface_t *blur);
+bool login_mouse(int x, int y, int pressed);
+bool login_key(int key, uint32_t ch, int mods, bool pressed);
+bool login_tick(void);
 
 #endif

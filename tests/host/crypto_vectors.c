@@ -35,6 +35,15 @@ int main(void) {
     hex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b", ikm, &il); hex("000102030405060708090a0b0c", salt, &sl); hex("f0f1f2f3f4f5f6f7f8f9", info, &nl);
     hkdf_extract(HASH_SHA256, salt, sl, ikm, il, prk); check("hkdf prk", prk, "077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5");
     hkdf_expand(HASH_SHA256, prk, info, nl, okm, 42); check("hkdf okm", okm, "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865");
+    /* PBKDF2-HMAC-SHA256 (RFC 7914 section 11 and the widely published vectors) */
+    pbkdf2_sha256((const uint8_t *)"password", 8, (const uint8_t *)"salt", 4, 1, out, 32);
+    check("pbkdf2 c=1", out, "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b");
+    pbkdf2_sha256((const uint8_t *)"password", 8, (const uint8_t *)"salt", 4, 2, out, 32);
+    check("pbkdf2 c=2", out, "ae4d0c95af6b46d32d0adff928f06dd02a303f8ef3c251dfd6e2d85a95474c43");
+    pbkdf2_sha256((const uint8_t *)"password", 8, (const uint8_t *)"salt", 4, 4096, out, 32);
+    check("pbkdf2 c=4096", out, "c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a");
+    pbkdf2_sha256((const uint8_t *)"passwd", 6, (const uint8_t *)"salt", 4, 1, out, 64);
+    check("pbkdf2 rfc7914 c=1 dk64", out, "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783");
     /* AES FIPS-197 */
     struct aes a;
     hex("000102030405060708090a0b0c0d0e0f", key, &kl); hex("00112233445566778899aabbccddeeff", pt, &pl);

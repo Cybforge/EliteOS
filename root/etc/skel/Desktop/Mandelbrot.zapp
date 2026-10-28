@@ -1,0 +1,3 @@
+name=Mandelbrot
+icon=fractal
+exec=@mandel

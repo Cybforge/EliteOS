@@ -14,6 +14,7 @@
 #include <wm.h>
 #include <block.h>
 #include <audio.h>
+#include <sys.h>
 
 struct bootinfo *boot_info;
 
@@ -56,12 +57,13 @@ NORETURN void kmain(struct bootinfo *bi)
     usb_init();
     ahci_init();
     audio_init();
-    net_init();
 
     bootcon_status("File system", 70);
     vfs_init();
     if (bi->initrd_size) vfs_load_tar(P2V(bi->initrd_phys), bi->initrd_size);
     fat_automount();
+    sys_init();
+    net_init();
 
     bootcon_status("Starting desktop", 90);
     wm_init();

@@ -141,9 +141,10 @@ enum {
     ICON_FRACTAL, ICON_TETRIS, ICON_PAINT, ICON_CALC, ICON_CLOCK, ICON_SETTINGS,
     ICON_INFO, ICON_IMAGE, ICON_LOG, ICON_SNAKE, ICON_FOLDER, ICON_FILE, ICON_TEXT,
     ICON_APP, ICON_POWER, ICON_RESTART, ICON_SEARCH, ICON_NETWORK, ICON_HOME,
-    ICON_TRASH, ICON_GAME, ICON_PLASMA, ICON_BROWSER, ICON_LOGOUT, ICON_DISK, ICON_INSTALL, ICON_PIANO, ICON_SOUND, ICON_CHESS, ICON_MINES, ICON_2048, ICON_COUNT,
+    ICON_TRASH, ICON_GAME, ICON_PLASMA, ICON_BROWSER, ICON_LOGOUT, ICON_DISK, ICON_INSTALL, ICON_PIANO, ICON_SOUND, ICON_CHESS, ICON_MINES, ICON_2048, ICON_STORE, ICON_USER, ICON_LOCK, ICON_ETHERNET, ICON_COUNT,
 };
 void icon_draw(surface_t *s, int icon, int x, int y, int size);
+int  icon_by_name(const char *name);               /* ICON_NONE if unknown */
 void logo_draw(surface_t *s, int x, int y, int size, bool swap);
 
 /* ------------------------------------------------------------------------
@@ -173,6 +174,7 @@ bool ui_toggle(ui_t *u, rect_t r, bool *v);
 bool ui_checkbox(ui_t *u, rect_t r, const char *label, bool *v);
 bool ui_slider(ui_t *u, rect_t r, float *v, float lo, float hi);
 bool ui_textbox(ui_t *u, rect_t r, char *buf, size_t cap, const char *placeholder);
+bool ui_password(ui_t *u, rect_t r, char *buf, size_t cap, const char *placeholder);
 bool ui_tab(ui_t *u, rect_t r, const char *label, bool active);
 void ui_progress(ui_t *u, rect_t r, float v, color_t c);
 void ui_panel(ui_t *u, rect_t r);
@@ -208,6 +210,22 @@ extern const struct app_info app_table[];
 extern const int app_count;
 const struct app_info *app_find(const char *id);
 void open_path(const char *path);
+
+/* launchers (wm/launcher.c): the .zapp files that make up the start menu */
+struct launcher {
+    char id[32];
+    char name[48];
+    char desc[96];
+    char exec[200];
+    char category[24];
+    int icon;
+    bool builtin;
+};
+void launchers_reload(void);
+int  launchers_count(void);
+const struct launcher *launcher_get(int i);
+const struct launcher *launcher_find(const char *id);
+void launcher_run(const struct launcher *l);
 int  file_icon_for(const char *name);
 
 #endif

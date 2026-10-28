@@ -4,6 +4,7 @@
  * paragraphs, links, lists, preformatted text, quotes and simple tables.
  */
 #include <wm.h>
+#include <sys.h>
 #include <mm.h>
 #include <net.h>
 #include <sched.h>
@@ -636,26 +637,61 @@ static void layout(struct page *p, int width)
  * loading
  * ---------------------------------------------------------------------- */
 
-static const char *home_html =
-    "<html><head><title>Zenith Web</title></head><body>"
-    "<h1>Zenith Web</h1>"
-    "<p>A web browser running on the ZenithOS TCP/IP stack. It speaks <b>HTTP</b> and <b>HTTPS</b> "
-    "(TLS 1.3 with certificate checks against Mozilla's root certificates).</p>"
-    "<h2>Places to try</h2><ul>"
-    "<li><a href=\"https://html.duckduckgo.com/html/\">DuckDuckGo</a> - search the web (the address bar searches here too)</li>"
-    "<li><a href=\"https://en.wikipedia.org/wiki/Special:Random\">A random Wikipedia article</a></li>"
-    "<li><a href=\"http://frogfind.com/\">FrogFind</a> - a search engine that turns the modern web into simple HTML</li>"
-    "<li><a href=\"http://68k.news/\">68k.news</a> - headlines for vintage computers</li>"
-    "<li><a href=\"http://info.cern.ch/hypertext/WWW/TheProject.html\">The first web page</a> (CERN, 1991)</li>"
-    "<li><a href=\"https://example.com/\">example.com</a> (HTTPS)</li>"
-    "<li><a href=\"http://neverssl.com/\">neverssl.com</a></li>"
-    "<li><a href=\"http://10.0.2.2:8000/\">http://10.0.2.2:8000/</a> - a server on the QEMU host</li>"
-    "<li><a href=\"file:///home/user/Documents/zenith.html\">ZenithOS Handbook</a> - a local page, no network needed</li>"
-    "<li><a href=\"file:///home/user/\">file:///home/user/</a> - browse your own files</li>"
-    "</ul><h2>Tips</h2><ul>"
-    "<li>Type an address or a search term into the bar and press Enter.</li>"
-    "<li>Alt+Left / Alt+Right go back and forward, F5 reloads, the mouse wheel scrolls.</li>"
-    "</ul></body></html>";
+/* the start page: /usr/share/zenith/home.html with @HOME@ and @BOOKMARKS@ filled in */
+static char *replace_all(char *src, const char *key, const char *val)
+{
+    size_t kl = strlen(key), vl = strlen(val), n = 0;
+    for (char *p = src; (p = strstr(p, key)); p += kl) n++;
+    char *out = kmalloc(strlen(src) + n * vl + 1);
+    if (!out) return src;
+    char *o = out;
+    for (char *p = src;;) {
+        char *k = strstr(p, key);
+        if (!k) { strcpy(o, p); break; }
+        memcpy(o, p, (size_t)(k - p));
+        o += k - p;
+        memcpy(o, val, vl);
+        o += vl;
+        p = k + kl;
+    }
+    kfree(src);
+    return out;
+}
+
+static char *build_home(void)
+{
+    size_t n;
+    char *t = vfs_read_file("/usr/share/zenith/home.html", &n);
+    if (!t) t = strdup("<html><body><h1>Zenith Web</h1><p>Type an address into the bar.</p></body></html>");
+    t = replace_all(t, "@HOME@", session_home());
+    char path[VFS_PATH_MAX];
+    char list[2048] = "";
+    if (session_path(".config/zenith/bookmarks", path, sizeof(path))) {
+        size_t bn;
+        char *bm = vfs_read_file(path, &bn);
+        if (bm) {
+            strlcat(list, "<ul>", sizeof(list));
+            for (char *line = bm; line && *line;) {
+                char *next = strchr(line, '\n');
+                if (next) *next++ = 0;
+                char *tab = strchr(line, '\t');
+                if (tab) *tab++ = 0;
+                if (*line && strlen(list) + strlen(line) * 2 + 64 < sizeof(list)) {
+                    strlcat(list, "<li><a href=\"", sizeof(list));
+                    strlcat(list, line, sizeof(list));
+                    strlcat(list, "\">", sizeof(list));
+                    strlcat(list, tab && *tab ? tab : line, sizeof(list));
+                    strlcat(list, "</a></li>", sizeof(list));
+                }
+                line = next;
+            }
+            strlcat(list, "</ul>", sizeof(list));
+            kfree(bm);
+        }
+    }
+    if (!list[0]) strlcpy(list, "<p>No bookmarks yet.</p>", sizeof(list));
+    return replace_all(t, "@BOOKMARKS@", list);
+}
 
 static void set_status(struct browser *b, const char *s) { strlcpy(b->status, s, sizeof(b->status)); }
 
@@ -902,7 +938,9 @@ static void navigate(struct browser *b, const char *target, bool record)
         b->page_gen++;
         page_free(&b->page);
         strlcpy(b->page.url, url, sizeof(b->page.url));
-        parse_html(&b->page, home_html, strlen(home_html), false);
+        char *home = build_home();
+        parse_html(&b->page, home, strlen(home), false);
+        kfree(home);
         mutex_unlock(&b->img_lock);
         b->scroll = 0;
         set_status(b, "Home");

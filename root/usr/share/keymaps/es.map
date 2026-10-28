@@ -1,0 +1,102 @@
+#name=Español
+#short=ES
+#altgr=yes
+# key  plain  shift  AltGr  AltGr+Shift   (- = nothing)
+grave      º  ª  \  -
+1          1  !  |  -
+2          2  "  @  -
+3          3  ·  #  -
+4          4  $  ~  -
+5          5  %  -  -
+6          6  &  ¬  -
+7          7  /  -  -
+8          8  (  -  -
+9          9  )  -  -
+0          0  =  -  -
+minus      '  ?  -  -
+equal      ¡  ¿  -  -
+q          q  Q  -  -
+w          w  W  -  -
+e          e  E  €  -
+r          r  R  -  -
+t          t  T  -  -
+y          y  Y  -  -
+u          u  U  -  -
+i          i  I  -  -
+o          o  O  -  -
+p          p  P  -  -
+lbrace     dead:grave  dead:circumflex  [  -
+rbrace     +  *  ]  -
+a          a  A  -  -
+s          s  S  -  -
+d          d  D  -  -
+f          f  F  -  -
+g          g  G  -  -
+h          h  H  -  -
+j          j  J  -  -
+k          k  K  -  -
+l          l  L  -  -
+semicolon  ñ  Ñ  -  -
+apostrophe dead:acute  dead:diaeresis  {  -
+backslash  ç  Ç  }  -
+102nd      <  >  -  -
+z          z  Z  -  -
+x          x  X  -  -
+c          c  C  -  -
+v          v  V  -  -
+b          b  B  -  -
+n          n  N  -  -
+m          m  M  -  -
+comma      ,  ;  -  -
+dot        .  :  -  -
+slash      -  _  -  -
+space      U+0020  U+0020
+compose acute a U+00E1
+compose acute e U+00E9
+compose acute i U+00ED
+compose acute o U+00F3
+compose acute u U+00FA
+compose acute y U+00FD
+compose acute A U+00C1
+compose acute E U+00C9
+compose acute I U+00CD
+compose acute O U+00D3
+compose acute U U+00DA
+compose acute Y U+00DD
+compose grave a U+00E0
+compose grave e U+00E8
+compose grave i U+00EC
+compose grave o U+00F2
+compose grave u U+00F9
+compose grave A U+00C0
+compose grave E U+00C8
+compose grave I U+00CC
+compose grave O U+00D2
+compose grave U U+00D9
+compose circumflex a U+00E2
+compose circumflex e U+00EA
+compose circumflex i U+00EE
+compose circumflex o U+00F4
+compose circumflex u U+00FB
+compose circumflex A U+00C2
+compose circumflex E U+00CA
+compose circumflex I U+00CE
+compose circumflex O U+00D4
+compose circumflex U U+00DB
+compose diaeresis a U+00E4
+compose diaeresis e U+00EB
+compose diaeresis i U+00EF
+compose diaeresis o U+00F6
+compose diaeresis u U+00FC
+compose diaeresis y U+00FF
+compose diaeresis A U+00C4
+compose diaeresis E U+00CB
+compose diaeresis I U+00CF
+compose diaeresis O U+00D6
+compose diaeresis U U+00DC
+compose tilde a U+00E3
+compose tilde o U+00F5
+compose tilde A U+00C3
+compose tilde O U+00D5
+compose tilde n U+00F1
+compose tilde N U+00D1

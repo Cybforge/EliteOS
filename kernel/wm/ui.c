@@ -180,7 +180,20 @@ bool ui_slider(ui_t *u, rect_t r, float *v, float lo, float hi)
     return changed;
 }
 
+static bool textbox_impl(ui_t *u, rect_t r, char *buf, size_t cap, const char *placeholder, bool mask);
+
 bool ui_textbox(ui_t *u, rect_t r, char *buf, size_t cap, const char *placeholder)
+{
+    return textbox_impl(u, r, buf, cap, placeholder, false);
+}
+
+/* like ui_textbox, but the characters are shown as dots */
+bool ui_password(ui_t *u, rect_t r, char *buf, size_t cap, const char *placeholder)
+{
+    return textbox_impl(u, r, buf, cap, placeholder, true);
+}
+
+static bool textbox_impl(ui_t *u, rect_t r, char *buf, size_t cap, const char *placeholder, bool mask)
 {
     uint64_t id = wid(r);
     bool hover = ui_hover(u, r);
@@ -211,10 +224,21 @@ bool ui_textbox(ui_t *u, rect_t r, char *buf, size_t cap, const char *placeholde
     surface_t sub = *u->s;
     sub.clip = rect_intersect(u->s->clip, R(r.x + 8, r.y, r.w - 16, r.h));
     int ty = r.y + (r.h - font_height(font_ui_lg)) / 2;
-    int tw = font_text_width(font_ui_lg, buf);
+    char dots[96];
+    const char *shown = buf;
+    if (mask) {
+        int n = 0;
+        for (const char *p = buf; *p && n < (int)sizeof(dots) - 4; ) {
+            utf8_next(&p);
+            dots[n++] = '*';
+        }
+        dots[n] = 0;
+        shown = dots;
+    }
+    int tw = font_text_width(font_ui_lg, shown);
     int tx = r.x + 10;
     if (tw > r.w - 24) tx -= tw - (r.w - 24);
-    if (buf[0]) gfx_text(&sub, font_ui_lg, tx, ty, buf, theme.text);
+    if (buf[0]) gfx_text(&sub, font_ui_lg, tx, ty, shown, theme.text);
     else if (placeholder) gfx_text(&sub, font_ui_lg, tx, ty, placeholder, theme.text_faint);
     if (focused) gfx_fill(&sub, tx + tw + 1, ty + 1, 2, font_height(font_ui_lg) - 2, theme.accent);
     return enter;

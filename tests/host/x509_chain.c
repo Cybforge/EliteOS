@@ -12,8 +12,8 @@ void *krealloc(void *p, size_t n) { return realloc(p, n); }
 void kfree(void *p) { free(p); }
 void klog(const char *f, ...) {}
 void random_bytes(void *o, size_t n) {}
-char _ca_bundle[1] = "", _ca_bundle_end[1];
 static char *slurp(const char *p, size_t *n) { FILE *f = fopen(p, "rb"); if (!f) return NULL; char *b = malloc(1 << 20); *n = fread(b, 1, 1 << 20, f); fclose(f); b[*n] = 0; return b; }
+struct fs_mount *vfs_mounts(void) { return NULL; }
 int vfs_list(const char *p, struct vfs_dirent *d, int m) { strcpy(d[0].name, "zenith-test-root.pem"); return 1; }
 char *vfs_read_file(const char *p, size_t *n) { return slurp("root.pem", n); }
 static int fails;

@@ -1,8 +1,8 @@
 /*
  * X.509 certificates: DER parsing, signature checks, host name matching,
  * chain building up to a trusted root, and the trust store (Mozilla's
- * root certificates embedded in the kernel plus PEM files in /etc/ssl/certs
- * and /disk/zenith/certs).
+ * root certificates from /etc/ssl/certs plus any zenith/certs folder on a
+ * mounted volume).
  */
 #include <x509.h>
 #include <crypto.h>
@@ -366,8 +366,6 @@ bool x509_match_host(const struct x509 *c, const char *host)
  * trust store
  * ---------------------------------------------------------------------- */
 
-extern const char _ca_bundle[], _ca_bundle_end[];
-
 static struct x509 *roots;
 static uint8_t **root_der;
 static int nroots;
@@ -435,28 +433,37 @@ static void add_roots(const char *pem, size_t len)
     }
 }
 
+/* every *.pem / *.crt in a directory */
+static void load_dir(const char *dir)
+{
+    struct vfs_dirent de[32];
+    int n = vfs_list(dir, de, 32);
+    for (int i = 0; i < n; i++) {
+        size_t l = strlen(de[i].name);
+        if (l < 5 || (strcasecmp(de[i].name + l - 4, ".pem") && strcasecmp(de[i].name + l - 4, ".crt"))) continue;
+        char path[VFS_PATH_MAX];
+        snprintf(path, sizeof(path), "%s/%s", dir, de[i].name);
+        size_t sz;
+        char *d = vfs_read_file(path, &sz);
+        if (d) { add_roots(d, sz); kfree(d); }
+    }
+}
+
+/* the trust store: /etc/ssl/certs (the system's roots, part of the image and updatable), plus anything a
+   mounted volume offers in zenith/certs (a company root on a USB stick, a test CA ...) */
 static void load_locked(void)
 {
     for (int i = 0; i < nroots; i++) kfree(root_der[i]);
     nroots = 0;
-    add_roots(_ca_bundle, (size_t)(_ca_bundle_end - _ca_bundle));
-    int builtin = nroots;
-    static const char *dirs[] = { "/etc/ssl/certs", "/disk/zenith/certs" };
-    struct vfs_dirent de[32];
-    for (unsigned k = 0; k < ARRAY_SIZE(dirs); k++) {
-        int n = vfs_list(dirs[k], de, 32);
-        for (int i = 0; i < n; i++) {
-            size_t l = strlen(de[i].name);
-            if (l < 5 || (strcasecmp(de[i].name + l - 4, ".pem") && strcasecmp(de[i].name + l - 4, ".crt"))) continue;
-            char path[VFS_PATH_MAX];
-            snprintf(path, sizeof(path), "%s/%s", dirs[k], de[i].name);
-            size_t sz;
-            char *d = vfs_read_file(path, &sz);
-            if (d) { add_roots(d, sz); kfree(d); }
-        }
+    load_dir("/etc/ssl/certs");
+    int system = nroots;
+    for (struct fs_mount *m = vfs_mounts(); m; m = m->next) {
+        char dir[96];
+        snprintf(dir, sizeof(dir), "%s/zenith/certs", m->path);
+        load_dir(dir);
     }
     loaded = true;
-    klog("tls: trust store: %d built-in roots, %d added", builtin, nroots - builtin);
+    klog("tls: trust store: %d system roots, %d added", system, nroots - system);
 }
 
 void trust_reload(void)

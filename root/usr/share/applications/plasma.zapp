@@ -1,0 +1,5 @@
+name=Plasma
+comment=Ring-3 user program demo
+icon=plasma
+exec=@plasma
+category=Demos

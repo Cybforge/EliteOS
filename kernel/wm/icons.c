@@ -321,9 +321,59 @@ void icon_draw(surface_t *s, int icon, int x, int y, int sz)
                            (int)c, (int)c, MAX(1, sz / 16), HEX(cols[k]));
         break;
     }
+    case ICON_STORE:
+        tile(s, x, y, sz, 0x35D07F, 0x0F8A5F);
+        /* a shopping bag */
+        gfx_round_rect(s, (int)(fx + fs * 0.24f), (int)(fy + fs * 0.38f), (int)(fs * 0.52f), (int)(fs * 0.40f), MAX(1, sz / 14), W);
+        gfx_arc(s, P(0.5f, 0.38f), fs * 0.13f, MAX(1.3f, fs * 0.055f), (float)K_PI, (float)(2 * K_PI), W);
+        gfx_line_w(s, P(0.5f, 0.50f), P(0.5f, 0.66f), MAX(1.3f, fs * 0.06f), HEX(0x0F8A5F));
+        gfx_line_w(s, P(0.43f, 0.58f), P(0.57f, 0.58f), MAX(1.3f, fs * 0.06f), HEX(0x0F8A5F));
+        break;
+    case ICON_USER:
+        tile(s, x, y, sz, 0x9D7CFF, 0x5B3FD8);
+        gfx_circle(s, P(0.5f, 0.38f), fs * 0.15f, W);
+        gfx_arc(s, P(0.5f, 0.84f), fs * 0.26f, fs * 0.26f, (float)K_PI, (float)(2 * K_PI), W);
+        break;
+    case ICON_LOCK:
+        gfx_arc(s, P(0.5f, 0.40f), fs * 0.18f, MAX(1.5f, fs * 0.08f), (float)K_PI, (float)(2 * K_PI), W);
+        gfx_line_w(s, P(0.32f, 0.40f), P(0.32f, 0.48f), MAX(1.5f, fs * 0.08f), W);
+        gfx_line_w(s, P(0.68f, 0.40f), P(0.68f, 0.48f), MAX(1.5f, fs * 0.08f), W);
+        gfx_round_rect(s, (int)(fx + fs * 0.22f), (int)(fy + fs * 0.46f), (int)(fs * 0.56f), (int)(fs * 0.38f), MAX(1, sz / 12), W);
+        gfx_circle(s, P(0.5f, 0.64f), fs * 0.055f, HEX(0x3D2FB8));
+        break;
+    case ICON_ETHERNET: {
+        /* a network plug */
+        color_t c = 0xFFE9EBF8u;
+        gfx_round_rect(s, (int)(fx + fs * 0.20f), (int)(fy + fs * 0.22f), (int)(fs * 0.60f), (int)(fs * 0.46f), MAX(1, sz / 10), c);
+        gfx_round_rect(s, (int)(fx + fs * 0.32f), (int)(fy + fs * 0.30f), (int)(fs * 0.36f), (int)(fs * 0.22f), MAX(1, sz / 16), HEX(0x2A2F4C));
+        for (int k = 0; k < 4; k++)
+            gfx_line_w(s, P(0.36f + 0.09f * (float)k, 0.52f), P(0.36f + 0.09f * (float)k, 0.60f), MAX(1.0f, fs * 0.04f), HEX(0x2A2F4C));
+        gfx_line_w(s, P(0.5f, 0.68f), P(0.5f, 0.82f), MAX(1.5f, fs * 0.08f), c);
+        break;
+    }
     default:
         tile(s, x, y, sz, 0x7C5CFF, 0x3D2FB8);
         break;
     }
 #undef P
+}
+
+static const struct { const char *name; int icon; } icon_names[] = {
+    { "terminal", ICON_TERMINAL }, { "files", ICON_FILES }, { "editor", ICON_EDITOR }, { "monitor", ICON_MONITOR },
+    { "cube", ICON_CUBE }, { "fractal", ICON_FRACTAL }, { "tetris", ICON_TETRIS }, { "paint", ICON_PAINT },
+    { "calc", ICON_CALC }, { "clock", ICON_CLOCK }, { "settings", ICON_SETTINGS }, { "info", ICON_INFO },
+    { "image", ICON_IMAGE }, { "log", ICON_LOG }, { "snake", ICON_SNAKE }, { "folder", ICON_FOLDER },
+    { "file", ICON_FILE }, { "text", ICON_TEXT }, { "app", ICON_APP }, { "power", ICON_POWER },
+    { "restart", ICON_RESTART }, { "search", ICON_SEARCH }, { "network", ICON_NETWORK }, { "home", ICON_HOME },
+    { "trash", ICON_TRASH }, { "game", ICON_GAME }, { "plasma", ICON_PLASMA }, { "browser", ICON_BROWSER },
+    { "logout", ICON_LOGOUT }, { "disk", ICON_DISK }, { "install", ICON_INSTALL }, { "piano", ICON_PIANO },
+    { "sound", ICON_SOUND }, { "chess", ICON_CHESS }, { "mines", ICON_MINES }, { "2048", ICON_2048 },
+    { "store", ICON_STORE }, { "user", ICON_USER }, { "lock", ICON_LOCK }, { "ethernet", ICON_ETHERNET },
+};
+
+int icon_by_name(const char *name)
+{
+    for (unsigned i = 0; i < ARRAY_SIZE(icon_names); i++)
+        if (!strcmp(icon_names[i].name, name)) return icon_names[i].icon;
+    return ICON_NONE;
 }

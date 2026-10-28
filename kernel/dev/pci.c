@@ -3,6 +3,7 @@
 #include <dev.h>
 #include <x86.h>
 #include <mm.h>
+#include <vfs.h>
 
 #define MAX_PCI 128
 
@@ -105,9 +106,8 @@ void pci_init(void)
     klog("pci: %d devices", ndevs);
     for (int i = 0; i < ndevs; i++) {
         struct pci_dev *d = &devs[i];
-        const char *dn = pci_device_name(d->vendor, d->device);
-        klog("pci: %02x:%02x.%x %04x:%04x %s%s%s", d->bus, d->dev, d->fn, d->vendor, d->device,
-             pci_class_name(d->cls, d->subcls), dn ? " - " : "", dn ? dn : "");
+        klog("pci: %02x:%02x.%x %04x:%04x %s", d->bus, d->dev, d->fn, d->vendor, d->device,
+             pci_class_name(d->cls, d->subcls));
     }
 }
 
@@ -164,60 +164,67 @@ const char *pci_class_name(uint8_t c, uint8_t s)
     }
 }
 
+/* vendor and device names come from /usr/share/misc/pci.ids (same format as the public pci.ids) */
+static char *ids;
+static bool ids_tried;
+
+static void ids_load(void)
+{
+    if (ids_tried) return;
+    ids_tried = true;
+    size_t n;
+    ids = vfs_read_file("/usr/share/misc/pci.ids", &n);
+}
+
+/* the line that starts at p, copied without its id into one of a few static buffers */
+static const char *line_text(const char *p)
+{
+    static char buf[4][96];
+    static int next;
+    char *b = buf[next++ & 3];
+    p += 4;
+    while (*p == ' ') p++;
+    size_t i = 0;
+    while (*p && *p != '\n' && i + 1 < sizeof(buf[0])) b[i++] = *p++;
+    b[i] = 0;
+    return b;
+}
+
+static bool id_at(const char *p, unsigned id)
+{
+    for (int k = 0; k < 4; k++) {
+        int c = (unsigned char)p[k], v = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1;
+        if (v < 0 || v != (int)((id >> (12 - 4 * k)) & 15)) return false;
+    }
+    return p[4] == ' ' || p[4] == '\t';
+}
+
+static const char *find_vendor_line(uint16_t v)
+{
+    ids_load();
+    if (!ids) return NULL;
+    for (const char *p = ids; *p;) {
+        if (*p != '#' && *p != '\t' && *p != '\n' && id_at(p, v)) return p;
+        p = strchr(p, '\n');
+        if (!p) break;
+        p++;
+    }
+    return NULL;
+}
+
 const char *pci_vendor_name(uint16_t v)
 {
-    switch (v) {
-    case 0x8086: return "Intel";
-    case 0x1022: return "AMD";
-    case 0x1002: return "AMD/ATI";
-    case 0x10DE: return "NVIDIA";
-    case 0x1234: return "QEMU";
-    case 0x1AF4: return "Red Hat (virtio)";
-    case 0x1B36: return "Red Hat (QEMU)";
-    case 0x15AD: return "VMware";
-    case 0x80EE: return "VirtualBox";
-    case 0x10EC: return "Realtek";
-    case 0x14E4: return "Broadcom";
-    case 0x168C: return "Qualcomm Atheros";
-    case 0x1B21: return "ASMedia";
-    case 0x144D: return "Samsung";
-    case 0x1912: return "Renesas";
-    default: return "Unknown vendor";
-    }
+    const char *l = find_vendor_line(v);
+    return l ? line_text(l) : "Unknown vendor";
 }
 
 const char *pci_device_name(uint16_t v, uint16_t d)
 {
-    if (v == 0x8086) {
-        switch (d) {
-        case 0x29C0: return "82G33 DRAM controller (Q35)";
-        case 0x2918: return "ICH9 LPC bridge";
-        case 0x2922: return "ICH9 AHCI SATA";
-        case 0x2930: return "ICH9 SMBus";
-        case 0x100E: return "82540EM Gigabit Ethernet (e1000)";
-        case 0x100F: return "82545EM Gigabit Ethernet";
-        case 0x10D3: return "82574L Gigabit Ethernet (e1000e)";
-        case 0x1237: return "440FX host bridge";
-        case 0x7000: return "PIIX3 ISA bridge";
-        case 0x7010: return "PIIX3 IDE";
-        case 0x7113: return "PIIX4 ACPI";
-        case 0x2668: return "ICH6 HD Audio";
-        case 0x293E: return "ICH9 HD Audio";
-        case 0x2415: return "82801AA AC'97 Audio";
-        }
+    const char *l = find_vendor_line(v);
+    if (!l) return NULL;
+    for (l = strchr(l, '\n'); l && *++l == '\t';) {
+        if (id_at(l + 1, d)) return line_text(l + 1);
+        l = strchr(l, '\n');
     }
-    if (v == 0x1234 && d == 0x1111) return "Standard VGA";
-    if (v == 0x1B36 && d == 0x000D) return "xHCI USB controller";
-    if (v == 0x1B36 && d == 0x0100) return "QXL display";
-    if (v == 0x1AF4) {
-        switch (d) {
-        case 0x1000: case 0x1041: return "virtio network";
-        case 0x1001: case 0x1042: return "virtio block";
-        case 0x1050: return "virtio GPU";
-        case 0x1052: return "virtio input";
-        }
-    }
-    if (v == 0x10EC && (d == 0x8139)) return "RTL8139 Fast Ethernet";
-    if (v == 0x10EC && (d == 0x8168)) return "RTL8111 Gigabit Ethernet";
     return NULL;
 }

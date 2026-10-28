@@ -50,6 +50,8 @@ char  *strrchr(const char *s, int c);
 char  *strstr(const char *h, const char *n);
 char  *strstr_ci(const char *h, const char *n);
 char  *strdup(const char *s);
+void  *memchr(const void *s, int c, size_t n);
+void   qsort(void *base, size_t n, size_t size, int (*cmp)(const void *, const void *));
 int    atoi(const char *s);
 long   strtol(const char *s, char **end, int base);
 int    tolower(int c);
@@ -59,6 +61,8 @@ int    isalpha(int c);
 int    isalnum(int c);
 int    isspace(int c);
 int    isprint(int c);
+int    islower(int c);
+int    isupper(int c);
 
 /* lib/printf.c */
 int  vsnprintf(char *buf, size_t size, const char *fmt, va_list ap);

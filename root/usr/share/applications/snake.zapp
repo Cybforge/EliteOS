@@ -1,0 +1,5 @@
+name=Snake
+comment=The classic snake game
+icon=snake
+exec=@snake
+category=Games

@@ -1,0 +1,5 @@
+name=Paint
+comment=Draw with brushes and colors
+icon=paint
+exec=@paint
+category=Graphics
