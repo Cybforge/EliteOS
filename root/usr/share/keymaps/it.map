@@ -49,5 +49,5 @@ n          n  N  -  -
 m          m  M  -  -
 comma      ,  ;  -  -
 dot        .  :  -  -
-slash      -  _  -  -
+slash      U+002D  _  -  -
 space      U+0020  U+0020

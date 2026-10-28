@@ -49,7 +49,7 @@ n          n  N  -  -
 m          m  M  µ  -
 comma      ,  ;  -  -
 dot        .  :  -  -
-slash      -  _  -  -
+slash      U+002D  _  -  -
 space      U+0020  U+0020
 kpdot      ,
 compose acute a U+00E1

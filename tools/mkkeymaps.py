@@ -19,8 +19,19 @@ ROWS = [
 COMBINING = {'acute': '́', 'grave': '̀', 'circumflex': '̂', 'diaeresis': '̈', 'tilde': '̃'}
 
 
+NONE = '\x00'                      # no character on this key level
+
+
+def token(c):
+    """how a character is written in a .map file: '-' means nothing, so a real hyphen is spelled out"""
+    if c == NONE:
+        return '-'
+    return 'U+%04X' % ord(c) if c == '-' else c
+
+
+
 def letters(keys):
-    return {k: (k, k.upper(), '-', '-') for k in keys if len(k) == 1 and k.isalpha()}
+    return {k: (k, k.upper(), NONE, NONE) for k in keys if len(k) == 1 and k.isalpha()}
 
 
 def layout(overrides, base=None):
@@ -34,7 +45,7 @@ def layout(overrides, base=None):
 def spec(s):
     """'a A @ -' -> tuple"""
     t = tuple(s.split())
-    return t + ('-',) * (4 - len(t))
+    return t + (NONE,) * (4 - len(t))
 
 
 def table(rows):
@@ -124,14 +135,16 @@ def main():
         for row in ROWS:
             for k in row:
                 if k in m:
-                    lines.append('%-10s %s' % (k, '  '.join(m[k])))
+                    lines.append('%-10s %s' % (k, '  '.join(token(c) for c in m[k])))
         lines.append('%-10s %s' % ('space', '␣'.replace('␣', 'U+0020') + '  U+0020'))
         if 'kpdot' in m:
             lines.append('%-10s %s' % ('kpdot', m['kpdot'][0]))
         if dead:
             lines += compose_lines()
+        text = '\n'.join(lines) + '\n'
+        assert 'U+002D' in text, lid + ': no hyphen on the keyboard'      # a bare "-" would mean "nothing"
         with open(os.path.join(outdir, lid + '.map'), 'w', encoding='utf-8') as f:
-            f.write('\n'.join(lines) + '\n')
+            f.write(text)
 
 
 main()
