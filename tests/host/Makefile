@@ -29,8 +29,16 @@ $(OUT)/roots: roots.c $(K)/net/x509.c $(CRYPTO) | $(OUT)
 $(OUT)/x509_chain: x509_chain.c $(K)/net/x509.c $(CRYPTO) | $(OUT)
 	@gcc $(CFLAGS) -o $@ $< $(K)/net/x509.c $(K)/crypto/sha2.c $(K)/crypto/bignum.c $(K)/crypto/ec.c $(K)/crypto/rsa.c
 
-run: $(OUT)/crypto_vectors $(OUT)/pubkey $(OUT)/roots $(OUT)/x509_chain
+# the Realtek driver against a software model of the chip (it has no emulator)
+$(OUT)/r8169_host.c: $(K)/net/nic/r8169.c | $(OUT)
+	@sed 's#"../netdev.h"#"netdev.h"#' $< > $@
+
+$(OUT)/rtl_model: rtl_model.c $(OUT)/r8169_host.c rtlshim/*.h | $(OUT)
+	@gcc -O1 -g -w -Irtlshim -include stdint.h -o $@ rtl_model.c $(OUT)/r8169_host.c
+
+run: $(OUT)/crypto_vectors $(OUT)/pubkey $(OUT)/roots $(OUT)/x509_chain $(OUT)/rtl_model
 	@echo "== symmetric crypto" && $(OUT)/crypto_vectors | tail -1
 	@echo "== public key crypto" && $(OUT)/pubkey | tail -1
 	@echo "== root certificates" && $(OUT)/roots ../../root/etc/ssl/certs/ca-bundle.pem | tail -1
 	@echo "== certificate chains" && mkdir -p $(OUT)/pki && cd $(OUT)/pki && sh $(CURDIR)/mkpki.sh >/dev/null 2>&1 && ../x509_chain | tail -1
+	@echo "== Realtek driver against a device model" && $(OUT)/rtl_model | tail -1

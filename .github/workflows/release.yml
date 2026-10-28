@@ -52,7 +52,7 @@ jobs:
         if: env.SKIP != '1'
         run: |
           make test | tee test.log
-          test "$(grep -c '^0 failures' test.log)" -eq 3
+          test "$(grep -c '^0 failures' test.log)" -eq 4
 
       - name: Check the image layout
         if: env.SKIP != '1'
