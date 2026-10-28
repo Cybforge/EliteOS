@@ -198,16 +198,26 @@ struct mm *mm_get(struct mm *m)
     return m;
 }
 
-/* drop every page of [start, end) from the page tables (mm->lock held) */
+/* drop every page of [start, end) from the page tables (mm->lock held). The frames are only given back once no CPU
+ * can still reach them through a stale translation. */
 static void zap_range(struct mm *m, uint64_t start, uint64_t end)
 {
-    for (uint64_t va = start; va < end; va += PAGE_SIZE) {
-        uint64_t *pte = vmm_pte(m->as, va, false);
-        if (!pte || !(*pte & PTE_P)) continue;
-        uint64_t pa = *pte & PTE_ADDR;
-        *pte = 0;
-        pmm_put(pa);
-        m->rss_pages--;
+    uint64_t frames[512];
+    for (uint64_t chunk = start; chunk < end;) {
+        uint64_t stop = MIN(end, chunk + 512 * PAGE_SIZE);
+        int n = 0;
+        for (uint64_t va = chunk; va < stop; va += PAGE_SIZE) {
+            uint64_t *pte = vmm_pte(m->as, va, false);
+            if (!pte || !(*pte & PTE_P)) continue;
+            frames[n++] = *pte & PTE_ADDR;
+            *pte = 0;
+            m->rss_pages--;
+        }
+        if (n) {
+            tlb_shootdown(m, chunk, stop);
+            for (int i = 0; i < n; i++) pmm_put(frames[i]);
+        }
+        chunk = stop;
     }
 }
 
@@ -606,8 +616,8 @@ static int fault_locked(struct mm *m, uint64_t va, bool write, bool exec)
         uint64_t fl = (*pte & ~PTE_ADDR & ~PTE_COW) | PTE_W;
         *pte = np | fl;
         invlpg(va);
-        pmm_put(old);
         tlb_shootdown(m, va, va + PAGE_SIZE);
+        pmm_put(old);                                           /* only now: no CPU may still write through the old entry */
         return 0;
     }
 
