@@ -77,6 +77,7 @@ long mm_msync(struct mm *m, uint64_t addr, uint64_t len);
 size_t mm_maps(struct mm *m, char *buf, size_t cap);     /* /proc/<pid>/maps */
 
 /* a page fault from user mode: true if it is fixed and the instruction can run again */
+void mm_fault_report(struct mm *m, uint64_t addr, uint64_t error);
 bool mm_fault(struct mm *m, uint64_t addr, uint64_t error);
 
 /* the current program's memory */

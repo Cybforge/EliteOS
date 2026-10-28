@@ -670,10 +670,25 @@ static long tty_f_read(struct sfile *f, void *buf, size_t n, uint64_t *off)
     return r;
 }
 
+static int echo_mode = -1;
+
+/* a debugging aid (abi_echo=1 in system.conf): everything programs print also goes to the serial log */
+static void echo_serial(const char *s, size_t n)
+{
+    static char line[200];
+    static size_t ll;
+    for (size_t i = 0; i < n; i++) {
+        if (s[i] == '\n' || ll >= sizeof(line) - 1) { line[ll] = 0; klog("out: %s", line); ll = 0; if (s[i] == '\n') continue; }
+        if ((unsigned char)s[i] >= 32 || s[i] == '\t') line[ll++] = s[i];
+    }
+}
+
 static long tty_f_write(struct sfile *f, const void *buf, size_t n, uint64_t *off)
 {
     UNUSED(off);
     struct tty *t = ((struct tty_priv *)f->priv)->tty;
+    if (echo_mode < 0) echo_mode = (int)conf_int(&sysconf, "abi_echo", 0);
+    if (echo_mode) echo_serial(buf, n);
     /* the terminal wants LF as CR LF */
     const char *s = buf;
     size_t start = 0;

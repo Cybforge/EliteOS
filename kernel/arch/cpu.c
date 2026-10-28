@@ -217,7 +217,9 @@ void isr_dispatch(struct regs *r)
             for (;;) { cli(); hlt(); }
         }
         if ((r->cs & 3) && v != 2 && v != 8 && v != 18) {
-            /* fault in user mode: kill the process, not the system */
+            /* fault in user mode: kill the process, not the system. CR2 belongs to this fault only until the
+             * next interrupt (another thread's fault could change it), so it is kept with the thread now. */
+            if (v == 14) thread_current()->fault_addr = read_cr2();
             proc_fault(r);
             return;
         }

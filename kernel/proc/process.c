@@ -299,7 +299,7 @@ void proc_fault(struct regs *r)
     snprintf(msg, sizeof(msg), "\n\x1b[91m%s: %s at %#lx", p ? p->name : "?", exception_name((int)r->vector), r->rip);
     if (r->vector == 14) {
         char more[48];
-        snprintf(more, sizeof(more), " (address %#lx)", read_cr2());
+        snprintf(more, sizeof(more), " (address %#lx)", thread_current()->fault_addr);
         strlcat(msg, more, sizeof(msg));
     }
     strlcat(msg, " - process terminated\x1b[0m\n", sizeof(msg));

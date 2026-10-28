@@ -309,6 +309,9 @@ long sv_rt_sigreturn(struct regs *r)
         uint8_t fx[512] __attribute__((aligned(16)));
         if (copy_from_user(fx, sc->fpstate, 512) == 0) memcpy((uint8_t *)r - 512, fx, 512);
     }
+    r->vector = 0x81;                                               /* leave through IRET: SYSRET would clobber rcx and r11 */
+    r->cs = 0x2B;
+    r->ss = 0x23;
     return (long)sc->rax;
 }
 
@@ -376,12 +379,15 @@ void sv_fault(struct regs *r)
     uint64_t v = r->vector;
     sti();
     if (v == 14) {
-        uint64_t addr = read_cr2();
+        uint64_t addr = thread_current()->fault_addr;
         if (mm_fault(t->g->mm, addr, r->error)) return;
+        mm_fault_report(t->g->mm, addr, r->error);
         t->sigsegv_addr = addr;
         t->sigsegv_code = (r->error & 1) ? SEGV_ACCERR : SEGV_MAPERR;
-        t->g->sig->act[SIGSEGV].flags &= ~0;                          /* (the handler, if any, runs on the way out) */
         int sig = SIGSEGV;
+        if (t->g->sig->act[sig].handler == SIG_DFL)
+            klog("abi: %s (pid %d) fault at rip %#lx accessing %#lx (error %#lx, rsp %#lx)", t->g->comm, t->g->tgid, r->rip, addr,
+                 r->error, r->rsp);
         spin_lock(&sv_lock);
         if (t->blocked & SIGBIT(sig)) { t->blocked &= ~SIGBIT(sig); t->g->sig->act[sig].handler = SIG_DFL; }    /* a blocked fault kills */
         t->pending |= SIGBIT(sig);
@@ -398,6 +404,8 @@ void sv_fault(struct regs *r)
     }
     t->sigsegv_addr = r->rip;
     t->sigsegv_code = code;
+    if (t->g->sig->act[sig].handler == SIG_DFL)
+        klog("abi: %s (pid %d) exception %lu at rip %#lx (error %#lx)", t->g->comm, t->g->tgid, v, r->rip, r->error);
     spin_lock(&sv_lock);
     if ((t->blocked & SIGBIT(sig)) || t->g->sig->act[sig].handler == SIG_IGN) { t->blocked &= ~SIGBIT(sig); t->g->sig->act[sig].handler = SIG_DFL; }
     t->pending |= SIGBIT(sig);

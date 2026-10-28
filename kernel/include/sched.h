@@ -41,6 +41,7 @@ typedef struct thread {
     uint64_t created_at;
     int exit_code;
     uint64_t fs_base;           /* user TLS pointer of System V threads */
+    uint64_t fault_addr;        /* CR2 of the page fault being handled (read before interrupts come back on) */
     struct sv_task *task;       /* ... and their per-thread state */
     volatile int interrupted;   /* woken by a signal while waiting */
 } thread_t;

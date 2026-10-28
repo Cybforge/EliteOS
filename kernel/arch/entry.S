@@ -265,6 +265,8 @@ syscall_entry:
     cli
     fxrstor64 [rsp]
     add rsp, 512
+    cmp qword ptr [rsp + 120], 0x81     /* rt_sigreturn: every register comes back, rcx and r11 included */
+    je 2f
     pop r15
     pop r14
     pop r13
@@ -287,6 +289,25 @@ syscall_entry:
     pop rsp                         /* user rsp */
     swapgs
     sysretq
+2:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rbp
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    add rsp, 16                     /* vector, error */
+    swapgs
+    iretq
 
 /* ---------------------------------------------------------------------
  * AP trampoline, copied to physical 0x8000. Real mode -> long mode.

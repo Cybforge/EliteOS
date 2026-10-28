@@ -631,6 +631,17 @@ static int fault_locked(struct mm *m, uint64_t va, bool write, bool exec)
     return 0;
 }
 
+/* what the memory map says about an address that could not be handled (for the log) */
+void mm_fault_report(struct mm *m, uint64_t addr, uint64_t error)
+{
+    mutex_lock(&m->lock);
+    struct vma *v = find_vma(m, addr);
+    uint64_t *pte = vmm_pte(m->as, addr, false);
+    klog("umm: unhandled fault at %#lx (error %#lx): %s [%#lx-%#lx) prot %u flags %#x, entry %#lx", addr, error,
+         v ? "area" : "no area", v ? v->start : 0, v ? v->end : 0, v ? v->prot : 0, v ? v->flags : 0, pte ? *pte : 0);
+    mutex_unlock(&m->lock);
+}
+
 bool mm_fault(struct mm *m, uint64_t addr, uint64_t error)
 {
     if (addr < USER_LO || addr >= UMM_STACK_TOP + PAGE_SIZE) return false;
