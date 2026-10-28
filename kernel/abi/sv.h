@@ -218,8 +218,12 @@ void sv_syscall(struct regs *r);
 bool sv_abi_ready(void);
 int  sv_open_path(struct sv_group *g, const char *path, int flags, int mode, struct sfile **out);
 extern const struct sfile_ops vnode_ops, dir_ops, null_ops, tty_ops, zero_ops;
+void sv_timerfd_tick(uint64_t now_mono_ns);                   /* timer thread: expire timerfds */
+void sv_ensure_timer_thread(void);
 void sv_poll_wake(void);                                       /* something became readable/writable somewhere */
-long sv_poll_wait(uint64_t timeout_ms);                        /* sleep until sv_poll_wake or timeout; -ERR_INTR if a signal came */
+uint64_t sv_poll_gen(void);
+long sv_poll_wait_gen(uint64_t gen, uint64_t timeout_ms);
+uint32_t sfile_poll(struct sfile *f, uint32_t events);
 int  sv_proc_path(struct sv_group *g, const char *path, struct sfile **out);   /* /proc, /dev, /sys style files */
 
 /* futex.c */

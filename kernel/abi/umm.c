@@ -688,6 +688,23 @@ int mm_access(struct mm *m, uint64_t addr, void *kbuf, size_t n, bool write)
     return 0;
 }
 
+/* is the memory at va shared with other address spaces (shared memory, MAP_SHARED)? */
+bool mm_is_shared(struct mm *m, uint64_t va)
+{
+    mutex_lock(&m->lock);
+    struct vma *v = find_vma(m, va);
+    bool s = v && (v->flags & VM_SHARED);
+    mutex_unlock(&m->lock);
+    return s;
+}
+
+/* the physical page behind va right now, without making it present or taking the lock (0 if there is none) */
+uint64_t mm_peek_phys(struct mm *m, uint64_t va)
+{
+    uint64_t *pte = vmm_pte(m->as, va, false);
+    return pte && (*pte & PTE_P) ? (*pte & PTE_ADDR) + (va & 0xFFF) : 0;
+}
+
 /* the physical address of a user word (the key of a futex), making the page present */
 uint64_t mm_user_phys(struct mm *m, uint64_t va, bool write)
 {

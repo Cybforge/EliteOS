@@ -110,6 +110,7 @@ void sv_send_signal(struct sv_group *g, struct sv_task *t, int sig)
             if (!(x->blocked & SIGBIT(sig))) { target = x; break; }
     spin_unlock(&sv_lock);
     if (target) sv_wake_task(target);
+    sv_poll_wake();                                      /* a signalfd may be waiting for it */
 }
 
 int sv_kill_group(int tgid, int sig)

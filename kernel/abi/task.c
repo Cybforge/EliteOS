@@ -131,8 +131,8 @@ static void link_group(struct sv_group *g)
 
 static int task_entry(void *arg);
 
-/* start the kernel thread of a task; t->fork_regs must be set (or t->entry for the first task) */
-static int start_thread(struct sv_task *t, const char *name)
+/* give a task its id and put it in its group (it does not run yet) */
+static void link_task(struct sv_task *t)
 {
     struct sv_group *g = t->g;
     spin_lock(&sv_lock);
@@ -142,9 +142,20 @@ static int start_thread(struct sv_task *t, const char *name)
     g->nthreads++;
     spin_unlock(&sv_lock);
     __atomic_add_fetch(&g->refs, 1, __ATOMIC_ACQ_REL);                      /* the task holds its group */
-    t->thr = thread_create_ex(name, task_entry, t, 0, -1, g->proc, 64 * 1024);
+}
+
+/* start the kernel thread of a linked task; t->fork_regs must be set */
+static int launch_task(struct sv_task *t, const char *name)
+{
+    t->thr = thread_create_ex(name, task_entry, t, 0, -1, t->g->proc, 64 * 1024);
     if (!t->thr) return -ERR_NOMEM;
     return 0;
+}
+
+static int start_thread(struct sv_task *t, const char *name)
+{
+    link_task(t);
+    return launch_task(t, name);
 }
 
 /* the first code of a task: enter user mode with the registers prepared for it */
@@ -342,11 +353,13 @@ long sv_clone(struct regs *r, uint64_t flags, uint64_t stack, uint64_t ptid, uin
         vf = kzalloc(sizeof(*vf));
         if (vf) { vf->refs = 2; t->vfork = vf; }               /* one share for the child, one for the waiting parent */
     }
-    int rc = start_thread(t, g->comm);
-    if (rc) return rc;
+    /* the ids are written before the new thread can run: it may finish before this call returns */
+    link_task(t);
     long tid = t->tid;
     if ((flags & CLONE_PARENT_SETTID) && ptid) copy_to_user(ptid, &(int){ (int)tid }, 4);
     if ((flags & CLONE_CHILD_SETTID) && ctid) mm_access(g->mm, ctid, &(int){ (int)tid }, 4, true);
+    int rc = launch_task(t, g->comm);
+    if (rc) return rc;
     /* vfork: the parent waits until the child has exec'd or exited */
     if (vf) {
         spin_lock(&sv_lock);
@@ -727,4 +740,22 @@ static struct sfile *tty_file(struct tty *tty, bool write_end)
     tty_get(tty);
     f->priv = p;
     return f;
+}
+
+/* a text dump of every System V task (the shell's `svps`) */
+int sv_dump(char *out, size_t n)
+{
+    size_t o = 0;
+    spin_lock(&sv_lock);
+    for (struct sv_group *g = sv_groups; g && o + 200 < n; g = g->next_all) {
+        o += (size_t)snprintf(out + o, n - o, "pid %d %s %s ppid %d threads %d refs %d rss %lu pages\n", g->tgid, g->comm, g->zombie ? "ZOMBIE" : "",
+                              g->parent ? g->parent->tgid : g->ppid, g->nthreads, g->refs, g->mm ? g->mm->rss_pages : 0);
+        for (struct sv_task *t = g->tasks; t && o + 160 < n; t = t->next) {
+            const char *st = !t->thr ? "?" : t->thr->state == T_BLOCKED ? "sleep" : t->thr->state == T_RUNNING ? "run" : "ready";
+            o += (size_t)snprintf(out + o, n - o, "  tid %d %s call %d wait %p blk %lx pnd %lx grp %lx exiting %d\n", t->tid, st, t->syscall_nr,
+                                  t->thr ? t->thr->wait_chan : NULL, t->blocked, t->pending, g->pending, t->exiting);
+        }
+    }
+    spin_unlock(&sv_lock);
+    return (int)o;
 }

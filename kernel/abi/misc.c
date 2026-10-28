@@ -50,11 +50,12 @@ static int timer_main(void *arg)
             if (t->interval_ns) t->next_ns = now + t->interval_ns;
             else t->armed = false;
         }
+        sv_timerfd_tick(now);
     }
     return 0;
 }
 
-static void ensure_timer_thread(void)
+void sv_ensure_timer_thread(void)
 {
     if (timer_thread_started) return;
     timer_thread_started = true;
@@ -68,7 +69,7 @@ static uint64_t ts_ns(const struct ts2 *t) { return (uint64_t)t->sec * 100000000
 SC(s_alarm)
 {
     struct sv_group *g = sv_curgrp();
-    ensure_timer_thread();
+    sv_ensure_timer_thread();
     uint64_t now = sv_now_ns();
     long left = g->alarm_at > now ? (long)((g->alarm_at - now + 999999999) / 1000000000) : 0;
     g->alarm_at = r->rdi ? now + r->rdi * 1000000000ull : 0;
@@ -80,7 +81,7 @@ SC(s_setitimer)
 {
     struct sv_group *g = sv_curgrp();
     if ((int)r->rdi != 0) return 0;                          /* only ITIMER_REAL is delivered */
-    ensure_timer_thread();
+    sv_ensure_timer_thread();
     uint64_t now = sv_now_ns();
     if (r->rdx) {
         struct { struct { int64_t s, us; } interval, value; } old;
@@ -118,7 +119,7 @@ SC(s_getitimer)
 SC(s_timer_create)
 {
     struct sv_group *g = sv_curgrp();
-    ensure_timer_thread();
+    sv_ensure_timer_thread();
     int sig = SIGALRM;
     if (r->rsi) {
         struct { uint64_t value; int32_t signo, notify; } ev;          /* struct sigevent (the part that matters) */

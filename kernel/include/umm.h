@@ -88,6 +88,8 @@ long strncpy_from_user(char *dst, uint64_t src, size_t max);   /* length without
 int  clear_user(uint64_t dst, size_t n);
 bool user_range_ok(uint64_t addr, size_t n);
 uint64_t mm_user_phys(struct mm *m, uint64_t va, bool write);
+uint64_t mm_peek_phys(struct mm *m, uint64_t va);
+bool mm_is_shared(struct mm *m, uint64_t va);
 /* a user string array (argv, envp): returns the count or a negative errno; strings are kmalloc'd */
 long copy_string_array(uint64_t uarr, char ***out);
 void free_string_array(char **a, long n);

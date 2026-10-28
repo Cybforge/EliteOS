@@ -1210,6 +1210,19 @@ static int c_pkg(struct shell *sh, int argc, char **argv)
     return 1;
 }
 
+int sv_dump(char *out, size_t n);
+
+static int c_svps(struct shell *sh, int argc, char **argv)
+{
+    UNUSED(argc); UNUSED(argv);
+    char *b = kmalloc(8192);
+    if (!b) return 1;
+    int n = sv_dump(b, 8192);
+    out(sh, b, (size_t)n);
+    kfree(b);
+    return 0;
+}
+
 static int c_module(struct shell *sh, int argc, char **argv)
 {
     if (argc >= 3 && !strcmp(argv[1], "load")) {
@@ -1287,6 +1300,7 @@ static const struct cmd commands[] = {
     { "install", c_install, "install ZenithOS to a disk" },
     { "gpu", c_gpu, "graphics adapter, driver and display mode" },
     { "pkg", c_pkg, "install and remove packages (update, search, install ...)" },
+    { "svps", c_svps, "programs of the System V interface and their threads" },
     { "module", c_module, "list, load and unload kernel modules" },
     { "bootmgr", c_bootmgr, "firmware boot entries (UEFI)" },
     { "ps", c_ps, "list threads and processes" },

@@ -64,18 +64,18 @@ void sv_poll_wake(void)
     sched_wake((void *)&poll_gen);
 }
 
-/* sleep until something changed (sv_poll_wake) or the timeout; the caller re-checks what it waits for */
-long sv_poll_wait(uint64_t timeout_ms)
+uint64_t sv_poll_gen(void) { return __atomic_load_n(&poll_gen, __ATOMIC_ACQUIRE); }
+
+/* Sleep until something changed after `gen` was read (read it before checking what you wait for), or the timeout
+ * (0 = none): 0 woken, 1 timeout, -ERR_INTR a signal is waiting. */
+long sv_poll_wait_gen(uint64_t gen, uint64_t timeout_ms)
 {
-    struct sv_task *t = sv_cur();
     spin_lock(&poll_lock);
-    uint64_t gen = poll_gen;
     long r = 0;
     while (poll_gen == gen) {
-        int w = sv_wait_chan((void *)&poll_gen, &poll_lock, timeout_ms ? timeout_ms : 0);
+        int w = sv_wait_chan((void *)&poll_gen, &poll_lock, timeout_ms);
         if (w < 0) { r = w; break; }
         if (w == 1) { r = 1; break; }
-        (void)t;
     }
     spin_unlock(&poll_lock);
     return r;
@@ -845,16 +845,24 @@ static void build_table(void)
 
 bool sv_abi_ready(void) { return true; }
 
+static int trace_mode = -1;
+
 void sv_syscall(struct regs *r)
 {
     if (!table_ready) build_table();
+    if (trace_mode < 0) trace_mode = (int)conf_int(&sysconf, "abi_trace", 0);        /* a debugging aid: log every call */
     struct sv_task *t = sv_cur();
     uint64_t nr = r->rax;
     thread_current()->interrupted = 0;
     t->syscall_nr = (int)nr;
     long rc;
+    uint64_t a[6] = { r->rdi, r->rsi, r->rdx, r->r10, r->r8, r->r9 };
+    bool tr = trace_mode == 1 || (trace_mode == 2 && (nr == N_clone || nr == N_futex || nr == N_exit || nr == N_exit_group || nr == N_wait4 ||
+                                                     nr == N_kill || nr == N_tgkill || nr == N_rt_sigreturn || nr == N_fork || nr == N_clone3));
+    if (tr) klog("sv %d.%d: call %lu(%#lx, %#lx, %#lx, %#lx)", t->g->tgid, t->tid, nr, a[0], a[1], a[2], a[3]);
     if (nr < NSYS) rc = table[nr](r);
     else rc = -ERR_NOSYS;
+    if (tr && nr != N_rt_sigreturn) klog("sv %d.%d: call %lu = %ld", t->g->tgid, t->tid, nr, rc);
     if (nr == N_rt_sigreturn) { t->syscall_nr = -1; r->rax = (uint64_t)rc; return; }
     r->rax = (uint64_t)rc;
     if (rc != -ERR_INTR) t->syscall_nr = -1;

@@ -1,6 +1,8 @@
 /*
- * Futexes: wait and wake keyed by the physical address of a word of user
- * memory, so private and shared mappings behave the same way.
+ * Futexes: wait and wake keyed by the address of a word of user memory. A word
+ * in memory shared between processes is identified by the physical page it is
+ * in; a word in private memory by (address space, address) - its physical page
+ * can change under it (copy on write) while a thread sleeps on it.
  */
 #include <kernel.h>
 #include <sched.h>
@@ -21,9 +23,11 @@
 #define FUTEX_PRIVATE 128
 #define FUTEX_CLOCK_REALTIME 256
 
+struct fkey { uint64_t mm, addr; };           /* mm is 0 for a word in shared memory (addr is then physical) */
+
 struct waiter {
     struct waiter *next;
-    uint64_t key;
+    struct fkey key;
     uint32_t bitset;
     volatile int woken;
 };
@@ -31,12 +35,31 @@ struct waiter {
 static spinlock_t flock = SPINLOCK_INIT("futex");
 static struct waiter *waiters;
 
-static int wake_key(uint64_t key, int count, uint32_t bitset)
+static bool key_eq(struct fkey a, struct fkey b) { return a.mm == b.mm && a.addr == b.addr; }
+
+/* the key for a word; for shared memory this needs the page to be present (faults it in) */
+static bool make_key(struct mm *m, uint64_t uaddr, struct fkey *k)
+{
+    if (!user_range_ok(uaddr, 4)) return false;
+    if (mm_is_shared(m, uaddr)) {
+        uint64_t pa = mm_user_phys(m, uaddr, false);
+        if (!pa) return false;
+        k->mm = 0;
+        k->addr = pa;
+    } else {
+        if (!mm_user_phys(m, uaddr, false)) return false;                  /* touch it: the word must exist */
+        k->mm = (uint64_t)(uintptr_t)m;
+        k->addr = uaddr;
+    }
+    return true;
+}
+
+static int wake_key(struct fkey key, int count, uint32_t bitset)
 {
     int n = 0;
     for (struct waiter **pp = &waiters; *pp && n < count;) {
         struct waiter *w = *pp;
-        if (w->key == key && (w->bitset & bitset)) {
+        if (key_eq(w->key, key) && (w->bitset & bitset)) {
             *pp = w->next;
             w->woken = 1;
             sched_wake(w);
@@ -56,11 +79,23 @@ static void remove_waiter(struct waiter *w)
 
 void sv_futex_wake_addr(struct mm *m, uint64_t uaddr, int count)
 {
-    uint64_t pa = mm_user_phys(m, uaddr, false);
-    if (!pa) return;
+    struct fkey k;
+    if (!make_key(m, uaddr, &k)) return;
     spin_lock(&flock);
-    wake_key(pa, count, ~0u);
+    wake_key(k, count, ~0u);
     spin_unlock(&flock);
+}
+
+/* the current value of the word; it has to be read under the lock, from the page that is mapped right now */
+static bool read_word(struct mm *m, uint64_t uaddr, uint32_t *out)
+{
+    for (int tries = 0; tries < 4; tries++) {
+        uint64_t pa = mm_peek_phys(m, uaddr);
+        if (!pa) return false;
+        *out = *(volatile uint32_t *)P2V(pa);
+        if (mm_peek_phys(m, uaddr) == pa) return true;               /* the page did not move while we looked */
+    }
+    return false;
 }
 
 long sv_futex(uint64_t uaddr, int op, uint32_t val, uint64_t timeout, uint64_t uaddr2, uint32_t val3)
@@ -68,8 +103,8 @@ long sv_futex(uint64_t uaddr, int op, uint32_t val, uint64_t timeout, uint64_t u
     struct mm *m = sv_curgrp()->mm;
     int cmd = op & 127;
     if (uaddr & 3) return -ERR_INVAL;
-    uint64_t pa = mm_user_phys(m, uaddr, false);
-    if (!pa) return -ERR_FAULT;
+    struct fkey key;
+    if (!make_key(m, uaddr, &key)) return -ERR_FAULT;
     switch (cmd) {
     case FUTEX_WAIT:
     case FUTEX_WAIT_BITSET: {
@@ -87,12 +122,13 @@ long sv_futex(uint64_t uaddr, int op, uint32_t val, uint64_t timeout, uint64_t u
             if (!ms) ms = 1;
         }
         struct waiter w;
-        w.key = pa;
+        w.key = key;
         w.bitset = cmd == FUTEX_WAIT_BITSET ? (val3 ? val3 : ~0u) : ~0u;
         w.woken = 0;
         spin_lock(&flock);
         /* the check and the enqueue are one step with respect to wakers */
-        uint32_t cur = *(volatile uint32_t *)P2V(pa);
+        uint32_t cur;
+        if (!read_word(m, uaddr, &cur)) { spin_unlock(&flock); return -ERR_FAULT; }
         if (cur != val) { spin_unlock(&flock); return -ERR_AGAIN; }
         w.next = waiters;
         waiters = &w;
@@ -110,32 +146,35 @@ long sv_futex(uint64_t uaddr, int op, uint32_t val, uint64_t timeout, uint64_t u
     case FUTEX_WAKE:
     case FUTEX_WAKE_BITSET: {
         spin_lock(&flock);
-        int n = wake_key(pa, (int)val, cmd == FUTEX_WAKE_BITSET ? (val3 ? val3 : ~0u) : ~0u);
+        int n = wake_key(key, (int)val, cmd == FUTEX_WAKE_BITSET ? (val3 ? val3 : ~0u) : ~0u);
         spin_unlock(&flock);
         return n;
     }
     case FUTEX_REQUEUE:
     case FUTEX_CMP_REQUEUE: {
-        uint64_t pa2 = mm_user_phys(m, uaddr2, false);
-        if (!pa2) return -ERR_FAULT;
+        struct fkey key2;
+        if (!make_key(m, uaddr2, &key2)) return -ERR_FAULT;
         spin_lock(&flock);
-        if (cmd == FUTEX_CMP_REQUEUE && *(volatile uint32_t *)P2V(pa) != val3) { spin_unlock(&flock); return -ERR_AGAIN; }
-        int woken = wake_key(pa, (int)val, ~0u);
+        uint32_t cur;
+        if (cmd == FUTEX_CMP_REQUEUE && (!read_word(m, uaddr, &cur) || cur != val3)) { spin_unlock(&flock); return -ERR_AGAIN; }
+        int woken = wake_key(key, (int)val, ~0u);
         int moved = 0;
         for (struct waiter *w = waiters; w && moved < (int)timeout; w = w->next)
-            if (w->key == pa) { w->key = pa2; moved++; }
+            if (key_eq(w->key, key)) { w->key = key2; moved++; }
         spin_unlock(&flock);
         return woken + moved;
     }
     case FUTEX_WAKE_OP: {
-        uint64_t pa2 = mm_user_phys(m, uaddr2, true);
-        if (!pa2) return -ERR_FAULT;
+        struct fkey key2;
+        if (!make_key(m, uaddr2, &key2)) return -ERR_FAULT;
         uint32_t enc = val3;
         int opx = (enc >> 28) & 7, cmpx = (enc >> 24) & 15;
         int oparg = (int)(enc << 8) >> 20, cmparg = (int)(enc << 20) >> 20;
         if ((enc >> 28) & 8) oparg = 1 << oparg;
-        volatile uint32_t *p2 = P2V(pa2);
         spin_lock(&flock);
+        uint64_t pa2 = mm_peek_phys(m, uaddr2);
+        if (!pa2) { spin_unlock(&flock); return -ERR_FAULT; }
+        volatile uint32_t *p2 = P2V(pa2);
         uint32_t old = *p2, nv = old;
         switch (opx) {
         case 0: nv = (uint32_t)oparg; break;
@@ -154,8 +193,8 @@ long sv_futex(uint64_t uaddr, int op, uint32_t val, uint64_t timeout, uint64_t u
         case 4: cond = (int)old > cmparg; break;
         case 5: cond = (int)old >= cmparg; break;
         }
-        int n = wake_key(pa, (int)val, ~0u);
-        if (cond) n += wake_key(pa2, (int)timeout, ~0u);
+        int n = wake_key(key, (int)val, ~0u);
+        if (cond) n += wake_key(key2, (int)timeout, ~0u);
         spin_unlock(&flock);
         return n;
     }
