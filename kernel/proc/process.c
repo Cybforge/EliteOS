@@ -12,7 +12,7 @@
 #include <x86.h>
 #include "file.h"
 
-#define MAX_PROCS 64
+#define MAX_PROCS 512
 
 static process_t *procs[MAX_PROCS];
 static spinlock_t proc_lock = SPINLOCK_INIT("procs");
@@ -200,6 +200,23 @@ process_t *proc_spawn(const char *path, int argc, char **argv, struct tty *tty, 
     return p;
 }
 
+/* processes of the System V interface appear in the same list (system monitor, kill) */
+void proc_register(process_t *p)
+{
+    spin_lock(&proc_lock);
+    for (int i = 0; i < MAX_PROCS; i++)
+        if (!procs[i]) { procs[i] = p; break; }
+    spin_unlock(&proc_lock);
+}
+
+void proc_unregister(process_t *p)
+{
+    spin_lock(&proc_lock);
+    for (int i = 0; i < MAX_PROCS; i++)
+        if (procs[i] == p) procs[i] = NULL;
+    spin_unlock(&proc_lock);
+}
+
 process_t *proc_find(int pid)
 {
     process_t *r = NULL;
@@ -233,10 +250,13 @@ int proc_wait(int pid)
     return code;
 }
 
+void sv_send_signal(struct sv_group *g, struct sv_task *t, int sig);
+
 bool proc_kill(int pid)
 {
     process_t *p = proc_find(pid);
     if (!p || p->exited) return false;
+    if (p->sv) { sv_send_signal(p->sv, NULL, 9); return true; }
     p->killed = true;
     return true;
 }
@@ -266,10 +286,14 @@ void proc_reap(thread_t *t)
     put_ref(p);
 }
 
+void sv_fault(struct regs *r);
+void sv_return_to_user(struct regs *r);
+
 void proc_fault(struct regs *r)
 {
     thread_t *t = thread_current();
     process_t *p = t->proc;
+    if (p && p->sv) { sv_fault(r); return; }
     const char *exception_name(int v);
     char msg[160];
     snprintf(msg, sizeof(msg), "\n\x1b[91m%s: %s at %#lx", p ? p->name : "?", exception_name((int)r->vector), r->rip);
@@ -287,9 +311,10 @@ void proc_fault(struct regs *r)
 }
 
 /* Checked when returning to user mode (syscalls and interrupts). */
-void proc_check_killed(void)
+void proc_check_killed(struct regs *r)
 {
     thread_t *t = thread_current();
+    if (t->proc && t->proc->sv) { sv_return_to_user(r); return; }
     if (t->proc && t->proc->killed && !t->proc->exited) {
         sti();
         proc_exit(-9);

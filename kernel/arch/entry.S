@@ -215,6 +215,17 @@ enter_user:
     iretq
 
 /* ---------------------------------------------------------------------
+ * enter_user_regs(struct regs *frame, const void *fxsave): continue in user mode from a prepared
+ * register frame (a new thread, a forked child), with its FPU state
+ * ------------------------------------------------------------------- */
+.global enter_user_regs
+enter_user_regs:
+    cli
+    fxrstor64 [rsi]
+    mov rsp, rdi
+    jmp isr_return
+
+/* ---------------------------------------------------------------------
  * SYSCALL entry. rax = number, args in rdi rsi rdx r10 r8 r9.
  * Builds the same struct regs frame as interrupts.
  * ------------------------------------------------------------------- */

@@ -17,6 +17,8 @@
 #include <sys.h>
 #include <pkg.h>
 #include <gpu.h>
+#include <umm.h>
+void sv_abi_init(void);
 
 struct bootinfo *boot_info;
 
@@ -44,6 +46,7 @@ NORETURN void kmain(struct bootinfo *bi)
     ioapic_init();
     timer_calibrate();
     sched_init();
+    umm_init();
     timer_init();
     syscall_init_this();
     sti();
@@ -65,6 +68,7 @@ NORETURN void kmain(struct bootinfo *bi)
     if (bi->initrd_size) vfs_load_tar(P2V(bi->initrd_phys), bi->initrd_size);
     fat_automount();
     sys_init();
+    sv_abi_init();
     pkg_init();
     net_init();
     gpu_boot_local();

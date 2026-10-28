@@ -18,6 +18,9 @@
 #include <gpu.h>
 #include <module.h>
 #include <uefi.h>
+struct abi_proc { int pid; process_t *legacy; struct sv_group *sv; };
+int abi_exec(const char *path, int argc, char **argv, struct tty *tty, const char *cwd, struct abi_proc *out);
+int abi_wait(struct abi_proc *p);
 
 #define HIST 64
 #define MAXARGS 32
@@ -1521,12 +1524,12 @@ static int run_argv(struct shell *sh, int argc, char **argv)
 
     char path[VFS_PATH_MAX];
     if (find_program(sh, argv[0], path)) {
-        process_t *p = proc_spawn(path, argc, argv, sh->tty, sh->cwd);
-        if (!p) { err(sh, argv[0], "cannot execute"); return 127; }
-        int pid = p->pid;
+        struct abi_proc ap;
+        if (abi_exec(path, argc, argv, sh->tty, sh->cwd, &ap)) { err(sh, argv[0], "cannot execute"); return 127; }
+        int pid = ap.pid;
         sh->tty->raw = false;
         sh->tty->fg_pid = pid;
-        int code = proc_wait(pid);
+        int code = abi_wait(&ap);
         sh->tty->fg_pid = 0;
         sh->tty->raw = true;
         if (code == -9) pr(sh, C_YEL "\n[killed]" C_RESET "\n");

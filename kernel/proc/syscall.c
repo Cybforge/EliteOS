@@ -13,7 +13,8 @@
 #include <syscall.h>
 #include "file.h"
 
-void proc_check_killed(void);
+void proc_check_killed(struct regs *r);
+void sv_syscall(struct regs *r);
 
 void syscall_init_this(void)
 {
@@ -262,6 +263,7 @@ void syscall_dispatch(struct regs *r)
     UNUSED(a4);
     long ret = ENOSYS;
     if (!p) { r->rax = (uint64_t)ENOSYS; return; }
+    if (p->sv) { sv_syscall(r); proc_check_killed(r); return; }       /* a program of the System V interface */
 
     switch (r->rax) {
     case SYS_EXIT:
@@ -392,5 +394,5 @@ void syscall_dispatch(struct regs *r)
         break;
     }
     r->rax = (uint64_t)ret;
-    proc_check_killed();
+    proc_check_killed(r);
 }

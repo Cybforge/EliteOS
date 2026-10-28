@@ -18,6 +18,8 @@
 #include <mm.h>
 #include <sched.h>
 #include <sys.h>
+struct abi_proc { int pid; process_t *legacy; struct sv_group *sv; };
+int abi_exec(const char *path, int argc, char **argv, struct tty *tty, const char *cwd, struct abi_proc *out);
 
 #define MAX_LAUNCHERS 256
 
@@ -105,7 +107,8 @@ void launcher_run(const struct launcher *l)
     }
     argv[argc] = NULL;
     if (!argc) return;
-    if (!proc_spawn(argv[0], argc, argv, NULL, session_home())) {
+    struct abi_proc ap;
+    if (abi_exec(argv[0], argc, argv, NULL, session_home(), &ap)) {
         char msg[96];
         snprintf(msg, sizeof(msg), "%s could not be started", argv[0]);
         wm_notify(l->name, msg, l->icon);

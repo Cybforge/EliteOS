@@ -35,6 +35,8 @@ int chess_main(void *arg);
 int mines_main(void *arg);
 int g2048_main(void *arg);
 int user_app_main(void *arg);
+struct abi_proc { int pid; process_t *legacy; struct sv_group *sv; };
+int abi_exec(const char *path, int argc, char **argv, struct tty *tty, const char *cwd, struct abi_proc *out);
 
 const struct app_info app_table[] = {
     { "files",    "Files",          "Browse and manage your files",      ICON_FILES,    files_main,     true },
@@ -171,7 +173,8 @@ void open_path(const char *path)
     }
     if (magic[0] == 0x7F && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F') {
         char *argv[] = { (char *)path, NULL };
-        proc_spawn(path, 1, argv, NULL, session_home());
+        struct abi_proc ap;
+        abi_exec(path, 1, argv, NULL, session_home(), &ap);
         return;
     }
     launch_with("editor", path);

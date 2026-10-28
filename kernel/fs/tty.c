@@ -2,6 +2,7 @@
  * Terminal line discipline. The terminal window feeds key events in; the
  * shell reads raw keys, user programs read cooked lines.
  */
+void proc_interrupt(int pid);
 #include <tty.h>
 #include <sched.h>
 #include <mm.h>
@@ -49,7 +50,7 @@ void tty_input(struct tty *t, const struct gui_event *ev)
     bool ctrl = ev->mods & MOD_CTRL;
     if (ctrl && (ev->key == KEY_C)) {
         t->interrupt = true;
-        if (t->fg_pid) proc_kill(t->fg_pid);
+        if (t->fg_pid) proc_interrupt(t->fg_pid);
     }
     spin_lock(&t->lock);
     if (t->raw) {

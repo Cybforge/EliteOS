@@ -14,6 +14,9 @@ enum thread_state {
 
 struct process;
 struct regs;
+struct mm;
+struct sv_group;
+struct sv_task;
 
 typedef struct thread {
     uint64_t rsp;               /* saved kernel stack pointer */
@@ -37,6 +40,9 @@ typedef struct thread {
     uint32_t cpu_pct;           /* x10, last second */
     uint64_t created_at;
     int exit_code;
+    uint64_t fs_base;           /* user TLS pointer of System V threads */
+    struct sv_task *task;       /* ... and their per-thread state */
+    volatile int interrupted;   /* woken by a signal while waiting */
 } thread_t;
 
 struct thread_snapshot {
@@ -93,6 +99,8 @@ typedef struct process {
     struct process *next;
     int nwindows;
     void *windows[8];
+    struct mm *mm;              /* programs of the System V interface: their memory (as == mm->as) */
+    struct sv_group *sv;        /* ... and their process state; NULL for ZenithOS programs */
 } process_t;
 
 process_t *proc_spawn(const char *path, int argc, char **argv, struct tty *tty, const char *cwd);

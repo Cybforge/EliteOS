@@ -102,7 +102,11 @@ static void schedule(void)
     c->current = next;
     c->slice_start = timer_ticks;
     set_kernel_stack((uint64_t)next->kstack + next->kstack_size);
-    vmm_switch(next->proc ? next->proc->as : &kernel_space);
+    addrspace_t *nas = next->proc ? next->proc->as : &kernel_space;
+    c->active_as = nas;
+    vmm_switch(nas);
+    if (next->proc && next->proc->sv) wrmsr(MSR_FS_BASE, next->fs_base);          /* each thread has its own TLS pointer */
+    else if (prev->proc && prev->proc->sv) wrmsr(MSR_FS_BASE, 0);
     nswitches++;
 
     int intena = c->intena;
@@ -173,10 +177,14 @@ thread_t *thread_current(void)
     return t;
 }
 
+void sv_task_exit_hook(thread_t *th);
+void sv_task_reap(thread_t *th);
+
 void thread_exit(int code)
 {
     thread_t *t = thread_current();
-    if (t->proc && !t->proc->exited) proc_exit(code);   /* cleans up, then comes back here */
+    if (t->task) sv_task_exit_hook(t);                  /* a thread of a System V program */
+    else if (t->proc && !t->proc->exited) proc_exit(code);   /* cleans up, then comes back here */
     spin_lock(&sched_lock);
     t->exit_code = code;
     t->state = T_DEAD;
@@ -215,7 +223,8 @@ static int reaper_main(void *arg)
         nthreads--;
         spin_unlock(&sched_lock);
 
-        if (z->proc) proc_reap(z);
+        if (z->task) sv_task_reap(z);
+        else if (z->proc) proc_reap(z);
         kfree(z->kstack);
         kfree(z);
     }
@@ -238,6 +247,11 @@ int sched_wait(void *chan, spinlock_t *lk, uint64_t timeout_ms)
     spin_lock(&sched_lock);
     if (lk) spin_unlock(lk);
     thread_t *t = this_cpu()->current;
+    if (t->task && t->interrupted) {                   /* a signal came in just before: do not go to sleep */
+        spin_unlock(&sched_lock);
+        if (lk) spin_lock(lk);
+        return 0;
+    }
     t->wait_chan = chan;
     t->wake_at = timeout_ms ? timer_ticks + timeout_ms : 0;
     t->timed_out = 0;
@@ -265,6 +279,20 @@ static void make_ready(thread_t *t)
     rq_push(t);
     struct cpu *c = this_cpu();
     if (c->current == c->idle) c->need_resched = 1;
+}
+
+/* wake a specific thread out of a wait (a signal arrived for it) */
+void sched_interrupt(thread_t *t)
+{
+    spin_lock(&sched_lock);
+    if (t->state == T_BLOCKED) {
+        blocked_remove(t);
+        t->interrupted = 1;
+        make_ready(t);
+    } else {
+        t->interrupted = 1;                    /* it is not asleep yet: its next wait returns at once */
+    }
+    spin_unlock(&sched_lock);
 }
 
 void sched_wake(void *chan)

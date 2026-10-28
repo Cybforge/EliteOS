@@ -28,6 +28,7 @@
 #define PTE_PS   (1ull << 7)
 #define PTE_G    (1ull << 8)
 #define PTE_OWNED (1ull << 9)       /* available bit: page is owned by the address space */
+#define PTE_COW  (1ull << 10)       /* available bit: write-protected for copy-on-write; a write copies the page */
 #define PTE_NX   (1ull << 63)
 #define PTE_ADDR 0x000FFFFFFFFFF000ull
 
@@ -45,6 +46,9 @@ void     pmm_free_contig(uint64_t pa, size_t pages);
 uint64_t pmm_total_pages(void);
 uint64_t pmm_free_pages(void);
 void     pmm_reclaim_acpi(void);
+void     pmm_share(uint64_t pa);                  /* one more mapper of this page */
+unsigned pmm_shared(uint64_t pa);                 /* mappers beyond the first */
+void     pmm_put(uint64_t pa);                    /* one mapper less; frees the page after the last */
 
 /* vmm.c */
 typedef struct addrspace {
@@ -65,6 +69,7 @@ void     vmm_set_cache(uint64_t phys, uint64_t size, uint64_t mode_flags);
 void    *vmm_map_mmio(uint64_t phys, uint64_t size);
 void    *vmm_map_mmio_wc(uint64_t phys, uint64_t size);
 void     vmm_identity_low(bool on);
+uint64_t *vmm_pte(addrspace_t *as, uint64_t va, bool create);   /* the entry for a 4 KiB page, NULL if there is none */
 bool     vmm_user_ok(addrspace_t *as, uint64_t va, uint64_t len, bool write);
 
 void    *vmalloc_pages(size_t pages);      /* zeroed, not physically contiguous */

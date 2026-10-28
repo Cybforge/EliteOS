@@ -56,6 +56,14 @@ static uint64_t *walk(addrspace_t *as, uint64_t va, bool create)
     return &pt[(va >> 12) & 511];
 }
 
+uint64_t *vmm_pte(addrspace_t *as, uint64_t va, bool create)
+{
+    spin_lock(&vmm_lock);
+    uint64_t *pte = walk(as, va, create);
+    spin_unlock(&vmm_lock);
+    return pte;
+}
+
 bool vmm_map(addrspace_t *as, uint64_t va, uint64_t pa, uint64_t flags)
 {
     spin_lock(&vmm_lock);

@@ -2,6 +2,7 @@
 #define ZENITH_CPU_H
 
 #include <kernel.h>
+#include <mm.h>
 
 #define MAX_CPUS 64
 
@@ -51,6 +52,7 @@ struct cpu {
     volatile uint64_t ticks_idle;
     uint64_t hist_busy, hist_idle;
     volatile uint32_t load;     /* percent over the last ~500 ms */
+    addrspace_t *volatile active_as;   /* the address space loaded in CR3 (to know whom to tell about changed mappings) */
 
     uint64_t gdt[8] __attribute__((aligned(16)));
     struct tss tss __attribute__((aligned(16)));

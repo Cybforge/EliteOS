@@ -84,6 +84,7 @@ bool     vfs_resolve(const char *cwd, const char *path, char *out, size_t outsz)
 vnode_t *vfs_lookup(const char *path);
 vnode_t *vfs_open(const char *path, bool create);        /* takes a reference */
 void     vfs_close(vnode_t *vn);
+vnode_t *vfs_ref(vnode_t *vn);                           /* one more reference */
 int      vfs_mkdir(const char *path);
 int      vfs_unlink(const char *path, bool recursive);
 int      vfs_rename(const char *from, const char *to);

@@ -14,3 +14,6 @@ _start:
 1:  jmp 1b
 
     .section .note.GNU-stack, "", @progbits
+
+    .section .zenith.abi,"a"
+    .asciz "zenith-abi-1"

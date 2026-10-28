@@ -11,6 +11,7 @@ static uint64_t  free_count;
 static uint64_t  next_hint;
 static spinlock_t pmm_lock = SPINLOCK_INIT("pmm");
 static struct bootinfo *boot;
+static uint16_t *shares;          /* per page: references beyond the first (pages mapped by several address spaces) */
 
 static inline void set_used(uint64_t p) { bitmap[p >> 6] |= 1ull << (p & 63); }
 static inline void set_free(uint64_t p) { bitmap[p >> 6] &= ~(1ull << (p & 63)); }
@@ -61,6 +62,10 @@ void pmm_init(struct bootinfo *bi)
 
     total_usable = free_count;
     next_hint = 256;
+    /* the share counts: two bytes per page, taken from the same pool */
+    size_t share_pages = (size_t)((npages * 2 + PAGE_SIZE - 1) / PAGE_SIZE);
+    uint64_t sp = pmm_alloc_contig(share_pages);
+    if (sp) shares = P2V(sp);
     klog("pmm: %lu MiB usable, %lu MiB free, bitmap %lu KiB",
          (total_usable * PAGE_SIZE) >> 20, (free_count * PAGE_SIZE) >> 20, bitmap_bytes >> 10);
 }
@@ -177,6 +182,30 @@ void pmm_free_contig(uint64_t pa, size_t count)
 void pmm_free(uint64_t pa)
 {
     pmm_free_contig(pa, 1);
+}
+
+/* A page mapped by more than one address space (fork, shared memory) carries one extra count per additional user;
+ * pmm_put drops one reference and frees the page when the last one is gone. */
+void pmm_share(uint64_t pa)
+{
+    if (shares) __atomic_add_fetch(&shares[pa / PAGE_SIZE], 1, __ATOMIC_ACQ_REL);
+}
+
+unsigned pmm_shared(uint64_t pa)
+{
+    return shares ? __atomic_load_n(&shares[pa / PAGE_SIZE], __ATOMIC_ACQUIRE) : 0;
+}
+
+void pmm_put(uint64_t pa)
+{
+    if (shares) {
+        uint16_t *c = &shares[pa / PAGE_SIZE];
+        uint16_t v = __atomic_load_n(c, __ATOMIC_ACQUIRE);
+        while (v) {
+            if (__atomic_compare_exchange_n(c, &v, (uint16_t)(v - 1), false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) return;
+        }
+    }
+    pmm_free(pa);
 }
 
 uint64_t pmm_total_pages(void) { return total_usable; }

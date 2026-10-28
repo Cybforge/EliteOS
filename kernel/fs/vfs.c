@@ -225,6 +225,16 @@ vnode_t *vfs_open(const char *path, bool create)
     return n;
 }
 
+/* another reference to an open node (a mapping that outlives the file descriptor, a forked descriptor) */
+vnode_t *vfs_ref(vnode_t *vn)
+{
+    if (!vn) return NULL;
+    mutex_lock(&vfs_mtx);
+    vn->refs++;
+    mutex_unlock(&vfs_mtx);
+    return vn;
+}
+
 void vfs_close(vnode_t *vn)
 {
     if (!vn) return;
