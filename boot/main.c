@@ -643,6 +643,18 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ih, EFI_SYSTEM_TABLE *st)
     }
     bi->mmap_count = n;
 
+    /* the regions the firmware's runtime services live in (no SetVirtualAddressMap: they stay at their physical addresses) */
+    bi->efi_runtime = (uint64_t)ST->RuntimeServices;
+    for (UINTN off = 0; off < msz; off += desc_size) {
+        EFI_MEMORY_DESCRIPTOR *d = (EFI_MEMORY_DESCRIPTOR *)((uint8_t *)mmap + off);
+        if (!(d->Attribute & 0x8000000000000000ull) || bi->efi_rt_count >= BOOT_RT_MAX) continue;   /* EFI_MEMORY_RUNTIME */
+        struct boot_rt_region *r = &bi->efi_rt[bi->efi_rt_count++];
+        r->phys = d->PhysicalStart;
+        r->length = d->NumberOfPages * 4096;
+        r->type = d->Type;
+        r->mmio = d->Type == EfiMemoryMappedIO || d->Type == EfiMemoryMappedIOPortSpace;
+    }
+
     uint64_t bi_virt = HHDM_BASE + bi_phys;
     uint64_t stack_top = HHDM_BASE + stack_phys + 4 * 4096;
     __asm__ volatile(

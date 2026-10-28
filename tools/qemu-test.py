@@ -137,7 +137,8 @@ def main():
     ap.add_argument('--time', type=float, default=15)
     ap.add_argument('--res', default='1280x800')
     ap.add_argument('--extra', default='')
-    ap.add_argument('--disk', help='raw disk image attached as a SATA drive')
+    ap.add_argument('--disk', action='append', help='raw disk image attached as a SATA drive (repeatable)')
+    ap.add_argument('--reuse-vars', action='store_true', help='keep the firmware variables of an earlier run (boot entries)')
     ap.add_argument('--nic', default='e1000',
                     help='comma separated network adapter models, each on its own user-mode network '
                          '(e.g. rtl8139,pcnet or usb-net); "none" for no adapter')
@@ -148,7 +149,8 @@ def main():
     if os.path.exists(qmp_path):
         os.remove(qmp_path)
     vars_path = os.path.join(args.out, 'vars.fd')
-    shutil.copy('/usr/share/OVMF/OVMF_VARS_4M.fd', vars_path)
+    if not (args.reuse_vars and os.path.exists(vars_path)):
+        shutil.copy('/usr/share/OVMF/OVMF_VARS_4M.fd', vars_path)
     serial_log = os.path.join(args.out, 'serial.log')
     cmd = ['qemu-system-x86_64', '-machine', 'q35', '-m', args.mem, '-smp', args.smp,
            '-drive', 'if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd',
@@ -164,8 +166,8 @@ def main():
         cmd += ['-netdev', f'user,id=n{i}', '-device', f'{model},netdev=n{i}' + (',' + opts.replace(':', ',') if opts else '')]
     if args.iso != 'none':
         cmd += ['-cdrom', args.iso]
-    if args.disk:
-        cmd += ['-drive', f'file={args.disk},format=raw,if=none,id=hd0', '-device', 'ide-hd,drive=hd0,bus=ide.0']
+    for i, disk in enumerate(args.disk or []):
+        cmd += ['-drive', f'file={disk},format=raw,if=none,id=hd{i}', '-device', f'ide-hd,drive=hd{i},bus=ide.{i}']
     if args.extra:
         cmd += args.extra.split()
     q = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)

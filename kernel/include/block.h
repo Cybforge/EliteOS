@@ -55,8 +55,21 @@ struct install_progress {
     volatile int step, nsteps;
     volatile int pct;
     volatile bool done, failed;
-    char msg[96];
+    char msg[160];
+    char note[160];                      /* something worth telling the user afterwards (no driver for the GPU ...) */
+    bool boot_entry;                     /* the firmware boots the new system first */
 };
-int zenith_install(struct blockdev *disk, bool erase, struct install_progress *p);
+
+/* everything the installer asks for */
+struct install_opts {
+    struct blockdev *disk;
+    bool erase;                          /* new partition table instead of adding to the FAT32 volume */
+    char language[16], keyboard[16], timezone[64], hostname[40];
+    char user[32], fullname[64], password[64];
+    bool autologin;
+    bool gpu_driver;                     /* download the graphics driver for this computer's adapter */
+};
+void install_defaults(struct install_opts *o);          /* the running system's language, keyboard, time zone */
+int  zenith_install(const struct install_opts *o, struct install_progress *p);
 
 #endif

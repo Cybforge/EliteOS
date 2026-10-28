@@ -79,6 +79,7 @@ int                    users_add(const char *name, const char *fullname, const c
 int                    users_set_password(const char *name, const char *password);
 int                    users_remove(const char *name);
 bool                   users_valid_name(const char *name);
+int                    users_make_line(const char *name, const char *fullname, const char *password, bool admin, int uid, char *out, size_t n);
 bool                   users_need_login(void);       /* more than a password-less account? */
 bool                   session_login(const char *name, const char *password);   /* false: wrong password */
 void                   session_logout(void);

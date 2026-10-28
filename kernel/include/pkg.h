@@ -69,6 +69,7 @@ struct pkg_job {
 };
 
 void pkg_init(void);
+void pkg_set_root(const char *prefix);                   /* install onto another volume: its zenith folder; "" for this system */
 int  pkg_update(struct pkg_job *job);                    /* refresh every source; returns the number of packages */
 int  pkg_count(void);
 const struct pkg *pkg_at(int i);

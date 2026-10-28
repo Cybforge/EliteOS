@@ -128,6 +128,17 @@ bool users_verify(const char *name, const char *password)
     return a && check_hash(a->hash, password);
 }
 
+/* one line of the accounts file for an account that is not (yet) on this system, e.g. what the installer writes */
+int users_make_line(const char *name, const char *fullname, const char *password, bool admin, int uid, char *out, size_t n)
+{
+    if (!users_valid_name(name)) return E_INVAL;
+    char full[64], hash[128];
+    strlcpy(full, fullname && *fullname ? fullname : name, sizeof(full));
+    for (char *c = full; *c; c++) if (*c == ':' || *c == '\n') *c = ' ';
+    make_hash(password, hash, sizeof(hash));
+    return snprintf(out, n, "%s:%d:%d:%s:%s\n", name, uid, admin ? 1 : 0, full, hash) < (int)n ? 0 : E_NOMEM;
+}
+
 int users_add(const char *name, const char *fullname, const char *password, bool admin)
 {
     if (!users_valid_name(name)) return E_INVAL;

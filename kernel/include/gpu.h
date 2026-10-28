@@ -10,6 +10,7 @@
  */
 #include <kernel.h>
 #include <dev.h>
+#include <pkg.h>
 
 /* one display mode with its full signal timing */
 struct gpu_timing {
@@ -109,6 +110,17 @@ void gpu_start(void);                           /* after the network is up: fetc
 void gpu_get_status(struct gpu_status *out);
 int  gpu_modes(struct gpu_timing *out, int max);     /* what the monitor offers, best first */
 int  gpu_apply_mode(const struct gpu_timing *t);     /* switch to one of them */
+/* what the package sources offer for this computer's graphics adapter (blocks while it asks the network) */
+enum { GPU_OFFER_NO_ADAPTER, GPU_OFFER_NO_NETWORK, GPU_OFFER_NO_LIST, GPU_OFFER_UNSUPPORTED, GPU_OFFER_AVAILABLE };
+struct gpu_offer {
+    int state;
+    char adapter[64];
+    char package[48];
+    char version[24];
+};
+void gpu_find_driver(struct gpu_offer *o);
+int  gpu_install_for_target(const struct gpu_offer *o, const char *target_zenith_dir, struct pkg_job *job);
+
 bool gpu_disabled(void);                        /* drivers are off because one failed to start */
 void gpu_reenable(void);
 const char *gpu_policy(void);

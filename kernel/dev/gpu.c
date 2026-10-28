@@ -357,6 +357,47 @@ static int gpud(void *arg)
     return 0;
 }
 
+void gpu_find_driver(struct gpu_offer *o)
+{
+    memset(o, 0, sizeof(*o));
+    struct pci_dev *ad[8];
+    int na = 0;
+    for (int i = 0; i < pci_count() && na < 8; i++)
+        if (pci_get(i)->cls == 0x03) ad[na++] = pci_get(i);
+    if (!na) { o->state = GPU_OFFER_NO_ADAPTER; return; }
+    adapter_name(ad[0], o->adapter, sizeof(o->adapter));
+    struct net_info ni;
+    for (int waited = 0; waited < 25 && !(net_get_info(&ni) && ni.ip); waited++) sched_sleep(1000);
+    if (!net_get_info(&ni) || !ni.ip) { o->state = GPU_OFFER_NO_NETWORK; return; }
+    struct pkg_job *job = kzalloc(sizeof(*job));
+    if (!job) { o->state = GPU_OFFER_NO_LIST; return; }
+    int known = pkg_update(job);
+    kfree(job);
+    if (known <= 0) { o->state = GPU_OFFER_NO_LIST; return; }
+    o->state = GPU_OFFER_UNSUPPORTED;
+    for (int a = 0; a < na; a++) {
+        int idx[4];
+        if (!pkg_for_pci(ad[a]->vendor, ad[a]->device, idx, 4)) continue;
+        const struct pkg *p = pkg_at(idx[0]);
+        if (!p->verified) continue;
+        adapter_name(ad[a], o->adapter, sizeof(o->adapter));
+        strlcpy(o->package, p->name, sizeof(o->package));
+        strlcpy(o->version, p->version, sizeof(o->version));
+        o->state = GPU_OFFER_AVAILABLE;
+        return;
+    }
+}
+
+/* download the offered driver onto another volume's /opt (the installer); it is loaded from there at every boot */
+int gpu_install_for_target(const struct gpu_offer *o, const char *target_zenith_dir, struct pkg_job *job)
+{
+    if (o->state != GPU_OFFER_AVAILABLE) return E_NOENT;
+    pkg_set_root(target_zenith_dir);
+    int r = pkg_install(o->package, job);
+    pkg_set_root("");
+    return r;
+}
+
 void gpu_start(void)
 {
     thread_create("gpud", gpud, NULL);

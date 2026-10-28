@@ -44,6 +44,15 @@ struct boot_framebuffer {
     uint32_t format;
 };
 
+/* memory the firmware's runtime services use: the kernel maps it (at its physical address) when it calls them */
+struct boot_rt_region {
+    uint64_t phys;
+    uint64_t length;
+    uint32_t type;
+    uint32_t mmio;                /* 1: device memory, map uncached */
+};
+
+#define BOOT_RT_MAX 64
 #define BOOT_MMAP_MAX 512
 
 struct bootinfo {
@@ -58,6 +67,9 @@ struct bootinfo {
     uint32_t mmap_count;
     uint32_t boot_flags;
     char     firmware_vendor[64];
+    uint64_t efi_runtime;         /* EFI_RUNTIME_SERVICES (physical address), 0 if the firmware has none */
+    uint32_t efi_rt_count;
+    struct boot_rt_region efi_rt[BOOT_RT_MAX];
     uint32_t edid_size;           /* the monitor's EDID as the firmware read it, 0 if it did not */
     uint8_t  edid[256];
     /* raw boot files, kept in memory so the installer can copy them to a disk */

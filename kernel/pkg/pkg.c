@@ -24,6 +24,18 @@ static int nsources;
 static struct pkg *inst;                        /* what /var/lib/zenith/pkg says */
 static int ninst;
 static mutex_t pkg_mtx = MUTEX_INIT("pkg");
+static char proot[96];                          /* "" normally; the zenith folder of another volume while installing onto it */
+
+/* a path below the package root: under(buf, n, "/opt/%s", name) */
+static void under(char *out, size_t n, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
+static void under(char *out, size_t n, const char *fmt, ...)
+{
+    size_t l = (size_t)snprintf(out, n, "%s", proot);
+    va_list ap;
+    va_start(ap, fmt);
+    if (l < n) vsnprintf(out + l, n - l, fmt, ap);
+    va_end(ap);
+}
 
 /* ------------------------------------------------------------------------
  * small helpers
@@ -338,12 +350,14 @@ static void load_installed(void)
 {
     ninst = 0;
     struct vfs_dirent de[128];
-    int n = vfs_list("/var/lib/zenith/pkg", de, 128);
+    char dbdir[VFS_PATH_MAX];
+    under(dbdir, sizeof(dbdir), "/var/lib/zenith/pkg");
+    int n = vfs_list(dbdir, de, 128);
     for (int i = 0; i < n && ninst < MAX_PKGS; i++) {
         size_t l = strlen(de[i].name);
         if (l < 6 || strcmp(de[i].name + l - 5, ".info")) continue;
         char path[VFS_PATH_MAX];
-        snprintf(path, sizeof(path), "/var/lib/zenith/pkg/%s", de[i].name);
+        under(path, sizeof(path), "/var/lib/zenith/pkg/%s", de[i].name);
         size_t sz;
         char *t = vfs_read_file(path, &sz);
         if (!t) continue;
@@ -364,6 +378,15 @@ void pkg_init(void)
     load_installed();
     mutex_unlock(&pkg_mtx);
     klog("pkg: %d source(s), %d known package(s), %d installed", nsources, npkgs, ninst);
+}
+
+/* install onto another volume (the installer): prefix is that volume's zenith folder, "" goes back to this system */
+void pkg_set_root(const char *prefix)
+{
+    mutex_lock(&pkg_mtx);
+    strlcpy(proot, prefix ? prefix : "", sizeof(proot));
+    load_installed();
+    mutex_unlock(&pkg_mtx);
 }
 
 int pkg_update(struct pkg_job *job)
@@ -591,8 +614,10 @@ static void write_info(const struct pkg *p)
     }
     n += snprintf(buf + n, sizeof(buf) - (size_t)n, "\n");
     char path[VFS_PATH_MAX];
-    snprintf(path, sizeof(path), "/var/lib/zenith/pkg/%s.info", p->name);
-    sys_mkdir_p("/var/lib/zenith/pkg");
+    under(path, sizeof(path), "/var/lib/zenith/pkg/%s.info", p->name);
+    char dbdir[VFS_PATH_MAX];
+    under(dbdir, sizeof(dbdir), "/var/lib/zenith/pkg");
+    sys_mkdir_p(dbdir);
     vfs_write_file(path, buf, (size_t)n);
 }
 
@@ -602,13 +627,15 @@ static void install_launchers(const char *name, const char *dir)
     char sdir[VFS_PATH_MAX];
     snprintf(sdir, sizeof(sdir), "%s/share/applications", dir);
     struct vfs_dirent de;
-    sys_mkdir_p("/opt/share/applications");
+    char adir[VFS_PATH_MAX];
+    under(adir, sizeof(adir), "/opt/share/applications");
+    sys_mkdir_p(adir);
     for (int i = 0; vfs_readdir(sdir, i, &de) == 0; i++) {
         size_t l = strlen(de.name);
         if (l < 6 || strcmp(de.name + l - 5, ".zapp")) continue;
         char from[VFS_PATH_MAX], to[VFS_PATH_MAX];
         snprintf(from, sizeof(from), "%s/%s", sdir, de.name);
-        snprintf(to, sizeof(to), "/opt/share/applications/%s", de.name);
+        under(to, sizeof(to), "/opt/share/applications/%s", de.name);
         size_t sz;
         char *t = vfs_read_file(from, &sz);
         if (!t) continue;
@@ -632,11 +659,11 @@ static void install_launchers(const char *name, const char *dir)
 static void remove_launchers(const char *name)
 {
     char dir[VFS_PATH_MAX];
-    snprintf(dir, sizeof(dir), "/opt/%s/share/applications", name);
+    under(dir, sizeof(dir), "/opt/%s/share/applications", name);
     struct vfs_dirent de;
     for (int i = 0; vfs_readdir(dir, i, &de) == 0; i++) {
         char p[VFS_PATH_MAX];
-        snprintf(p, sizeof(p), "/opt/share/applications/%s", de.name);
+        under(p, sizeof(p), "/opt/share/applications/%s", de.name);
         vfs_unlink(p, false);
     }
 }
@@ -691,9 +718,9 @@ static int install_one(const struct pkg *p, struct pkg_job *job, int base, int s
         return E_INVAL;
     }
     char part[VFS_PATH_MAX], fin[VFS_PATH_MAX], old[VFS_PATH_MAX];
-    snprintf(part, sizeof(part), "/opt/%s.partial", p->name);
-    snprintf(fin, sizeof(fin), "/opt/%s", p->name);
-    snprintf(old, sizeof(old), "/opt/%s.old", p->name);
+    under(part, sizeof(part), "/opt/%s.partial", p->name);
+    under(fin, sizeof(fin), "/opt/%s", p->name);
+    under(old, sizeof(old), "/opt/%s.old", p->name);
     vfs_unlink(part, true);
     int files = 0;
     int r = tar_extract(tar, tn, part, err, sizeof(err), &files);
@@ -723,9 +750,9 @@ static void remove_files(const char *name)
 {
     char path[VFS_PATH_MAX];
     remove_launchers(name);
-    snprintf(path, sizeof(path), "/opt/%s", name);
+    under(path, sizeof(path), "/opt/%s", name);
     vfs_unlink(path, true);
-    snprintf(path, sizeof(path), "/var/lib/zenith/pkg/%s.info", name);
+    under(path, sizeof(path), "/var/lib/zenith/pkg/%s.info", name);
     vfs_unlink(path, false);
 }
 
@@ -787,7 +814,7 @@ int pkg_install(const char *name, struct pkg_job *job)
             for (int i = 0; i < ndone; i++) remove_files(done_names[i]);
             for (int i = 0; i < n; i++) {
                 char p[VFS_PATH_MAX];
-                snprintf(p, sizeof(p), "/opt/%s.partial", plan[i]->name);
+                under(p, sizeof(p), "/opt/%s.partial", plan[i]->name);
                 vfs_unlink(p, true);
                 snprintf(p, sizeof(p), "/var/cache/zenith/%s_%s.zpk", plan[i]->name, plan[i]->version);
                 vfs_unlink(p, false);
