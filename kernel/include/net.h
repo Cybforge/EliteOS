@@ -51,6 +51,40 @@ long tcp_recv(tcp_sock_t *s, void *buf, size_t len, int timeout_ms);   /* 0 = cl
 void tcp_close(tcp_sock_t *s);
 int  tcp_open_count(void);
 
+/* the same for the socket layer: nothing here sleeps */
+#define TCPF_READ       0x01        /* data to read */
+#define TCPF_EOF        0x02        /* the peer is done sending (or the connection is gone) */
+#define TCPF_WRITE      0x04        /* connected and there is room to send */
+#define TCPF_ERR        0x08        /* reset or timed out */
+#define TCPF_CONNECTING 0x10
+#define TCPF_CLOSED     0x20
+tcp_sock_t *tcp_connect_start(uint32_t ip, uint16_t port);
+uint32_t tcp_flags(tcp_sock_t *s);
+long   tcp_send_nb(tcp_sock_t *s, const void *data, size_t len);      /* bytes taken (0: full), -1 on error */
+size_t tcp_readable(tcp_sock_t *s);
+size_t tcp_unsent(tcp_sock_t *s);
+void   tcp_shutdown_write(tcp_sock_t *s);
+void   tcp_release(tcp_sock_t *s);                                      /* close and let the stack finish it */
+void   tcp_addrs(tcp_sock_t *s, uint32_t *lip, uint16_t *lport, uint32_t *rip, uint16_t *rport);
+typedef struct tcp_listener tcp_listener_t;
+tcp_listener_t *tcp_listen(uint16_t port, int backlog);              /* NULL when the port is taken */
+tcp_sock_t *tcp_accept_nb(tcp_listener_t *l);
+bool   tcp_listener_ready(tcp_listener_t *l);
+void   tcp_listen_close(tcp_listener_t *l);
+
+/* called whenever a socket may have become readable or writable; the socket layer wakes its sleepers from it */
+extern void (*net_activity_hook)(void);
+
+/* UDP endpoints: bound port, queue of received datagrams, loopback inside the host */
+typedef struct udp_ep udp_ep_t;
+udp_ep_t *udp_ep_open(uint16_t port);                                  /* 0: pick a free port; NULL when taken */
+uint16_t  udp_ep_port(udp_ep_t *e);
+long      udp_ep_send(udp_ep_t *e, uint32_t dst, uint16_t dport, const void *data, size_t len);   /* bytes, -1 on failure */
+long      udp_ep_recv(udp_ep_t *e, void *buf, size_t cap, uint32_t *from, uint16_t *fport, bool peek);   /* -2: nothing queued */
+bool      udp_ep_ready(udp_ep_t *e);
+void      udp_ep_close(udp_ep_t *e);
+bool      net_is_local_ip(uint32_t ip);                                /* 127.0.0.0/8 or one of our addresses */
+
 /* HTTP(S) requests */
 struct http_result {
     int status;                 /* -1 when there was no answer */

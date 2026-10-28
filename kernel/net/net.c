@@ -382,6 +382,8 @@ static bool udp_broadcast(struct iface *ifc, uint16_t sport, uint16_t dport, con
     return ip_output(ifc, bcast, 0xFFFFFFFF, 17, pkt, udp_build(pkt, sport, dport, data, len));
 }
 
+static void ep_deliver(uint16_t port, uint32_t from, uint16_t fport, const void *data, size_t len);
+
 static void udp_input(struct iface *ifc, uint32_t src, uint8_t *data, size_t len)
 {
     if (len < sizeof(struct udp)) return;
@@ -401,6 +403,7 @@ static void udp_input(struct iface *ifc, uint32_t src, uint8_t *data, size_t len
     }
     spin_unlock(&net_lock);
     sched_wake(&udp_chan);
+    ep_deliver(port, src, ntohs(u->sport), data + sizeof(*u), plen);
 }
 
 static bool udp_bind(struct udp_sock *s, uint16_t port, struct iface *ifc)
@@ -427,6 +430,134 @@ static bool udp_wait(struct udp_sock *s, uint64_t deadline)
 {
     while (!s->len && uptime_ms() < deadline) sched_wait(&udp_chan, NULL, 50);
     return s->len > 0;
+}
+
+/* ------------------------------------------------------------------------
+ * UDP endpoints for programs: a bound port and a queue of datagrams
+ * ---------------------------------------------------------------------- */
+
+#define UDP_EPS   48
+#define UDP_QLEN  32
+
+struct udp_dgram {
+    uint32_t from;
+    uint16_t fport, len;
+    uint8_t data[1472];
+};
+
+struct udp_ep {
+    bool used;
+    uint16_t port;
+    struct udp_dgram *q;
+    int head, count;
+};
+
+static struct udp_ep udp_eps[UDP_EPS];
+static spinlock_t udp_ep_lock = SPINLOCK_INIT("udp-ep");
+
+bool net_is_local_ip(uint32_t ip)
+{
+    if ((ip >> 24) == 127) return true;
+    for (int i = 0; i < nifs; i++)
+        if (ifs[i].info.ip && ifs[i].info.ip == ip) return true;
+    return false;
+}
+
+static bool udp_port_taken(uint16_t port)
+{
+    for (int i = 0; i < UDP_EPS; i++) if (udp_eps[i].used && udp_eps[i].port == port) return true;
+    for (size_t i = 0; i < ARRAY_SIZE(udp_socks); i++) if (udp_socks[i] && udp_socks[i]->port == port) return true;
+    return false;
+}
+
+udp_ep_t *udp_ep_open(uint16_t port)
+{
+    struct udp_dgram *q = kmalloc(sizeof(*q) * UDP_QLEN);
+    if (!q) return NULL;
+    spin_lock(&udp_ep_lock);
+    if (!port) {
+        uint16_t r;
+        random_bytes(&r, sizeof(r));
+        for (int k = 0; k < 28000 && !port; k++) {
+            uint16_t c = (uint16_t)(32768 + ((r + k) % 28000));
+            if (!udp_port_taken(c)) port = c;
+        }
+    } else if (udp_port_taken(port)) {
+        port = 0;
+    }
+    struct udp_ep *e = NULL;
+    for (int i = 0; i < UDP_EPS && port && !e; i++)
+        if (!udp_eps[i].used) e = &udp_eps[i];
+    if (e) {
+        e->used = true;
+        e->port = port;
+        e->q = q;
+        e->head = e->count = 0;
+    }
+    spin_unlock(&udp_ep_lock);
+    if (!e) kfree(q);
+    return e;
+}
+
+uint16_t udp_ep_port(udp_ep_t *e) { return e->port; }
+
+static void ep_deliver(uint16_t port, uint32_t from, uint16_t fport, const void *data, size_t len)
+{
+    if (len > 1472) return;
+    bool got = false;
+    spin_lock(&udp_ep_lock);
+    for (int i = 0; i < UDP_EPS; i++) {
+        struct udp_ep *e = &udp_eps[i];
+        if (!e->used || e->port != port || e->count >= UDP_QLEN) continue;
+        struct udp_dgram *d = &e->q[(e->head + e->count) % UDP_QLEN];
+        d->from = from;
+        d->fport = fport;
+        d->len = (uint16_t)len;
+        memcpy(d->data, data, len);
+        e->count++;
+        got = true;
+    }
+    spin_unlock(&udp_ep_lock);
+    if (got && net_activity_hook) net_activity_hook();
+}
+
+long udp_ep_send(udp_ep_t *e, uint32_t dst, uint16_t dport, const void *data, size_t len)
+{
+    if (len > 1472 - sizeof(struct udp)) return -1;
+    if (net_is_local_ip(dst)) {
+        ep_deliver(dport, dst, e->port, data, len);                 /* it never leaves the host */
+        return (long)len;
+    }
+    return udp_send(dst, e->port, dport, data, len) ? (long)len : -1;
+}
+
+long udp_ep_recv(udp_ep_t *e, void *buf, size_t cap, uint32_t *from, uint16_t *fport, bool peek)
+{
+    long n = -2;
+    spin_lock(&udp_ep_lock);
+    if (e->count) {
+        struct udp_dgram *d = &e->q[e->head];
+        n = (long)d->len;
+        memcpy(buf, d->data, MIN(cap, (size_t)d->len));
+        if (from) *from = d->from;
+        if (fport) *fport = d->fport;
+        if (!peek) { e->head = (e->head + 1) % UDP_QLEN; e->count--; }
+    }
+    spin_unlock(&udp_ep_lock);
+    return n;                                   /* the full length, which may exceed cap (the caller truncates) */
+}
+
+bool udp_ep_ready(udp_ep_t *e) { return e->count > 0; }
+
+void udp_ep_close(udp_ep_t *e)
+{
+    if (!e) return;
+    spin_lock(&udp_ep_lock);
+    e->used = false;
+    struct udp_dgram *q = e->q;
+    e->q = NULL;
+    spin_unlock(&udp_ep_lock);
+    kfree(q);
 }
 
 /* one UDP question and its answer (NTP): sends from a random port, waits for a datagram back */
