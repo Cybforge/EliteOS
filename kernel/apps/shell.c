@@ -14,6 +14,10 @@
 #include <audio.h>
 #include <crypto.h>
 #include <sys.h>
+#include <pkg.h>
+#include <gpu.h>
+#include <module.h>
+#include <uefi.h>
 
 #define HIST 64
 #define MAXARGS 32
@@ -27,6 +31,7 @@ struct shell {
     char *rbuf;
     size_t rlen, rcap;
     int last_status;
+    int pw;                          /* display width of the prompt, to redraw input that wraps over several rows */
     bool quit;
 };
 
@@ -677,22 +682,39 @@ static int c_umount(struct shell *sh, int argc, char **argv)
 
 static int c_install(struct shell *sh, int argc, char **argv)
 {
-    bool erase = false;
+    struct install_opts o;
+    install_defaults(&o);
     const char *dev = NULL;
     for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "--erase")) erase = true;
-        else dev = argv[i];
+        const char *a = argv[i];
+        const char *val = i + 1 < argc ? argv[i + 1] : "";
+        if (!strcmp(a, "--erase")) o.erase = true;
+        else if (!strcmp(a, "--no-gpu-driver")) o.gpu_driver = false;
+        else if (!strcmp(a, "--autologin")) o.autologin = true;
+        else if (!strcmp(a, "--user")) { strlcpy(o.user, val, sizeof(o.user)); i++; }
+        else if (!strcmp(a, "--name")) { strlcpy(o.fullname, val, sizeof(o.fullname)); i++; }
+        else if (!strcmp(a, "--password")) { strlcpy(o.password, val, sizeof(o.password)); i++; }
+        else if (!strcmp(a, "--hostname")) { strlcpy(o.hostname, val, sizeof(o.hostname)); i++; }
+        else if (!strcmp(a, "--language")) { strlcpy(o.language, val, sizeof(o.language)); i++; }
+        else if (!strcmp(a, "--keyboard")) { strlcpy(o.keyboard, val, sizeof(o.keyboard)); i++; }
+        else if (!strcmp(a, "--timezone")) { strlcpy(o.timezone, val, sizeof(o.timezone)); i++; }
+        else dev = a;
     }
-    if (!dev) {
-        err(sh, "install", "usage: install <disk> [--erase]   (see lsblk; without --erase the FAT32 volume is kept)");
+    if (!dev || !o.user[0] || !o.password[0]) {
+        err(sh, "install", "usage: install <disk> --user <name> --password <pw> [--erase] [--name <full name>] [--hostname <h>]\n"
+                           "       [--language de] [--keyboard de] [--timezone Europe/Berlin] [--autologin] [--no-gpu-driver]\n"
+                           "       (see lsblk; without --erase the FAT32 volume is kept; the graphical installer asks for all of this)");
         return 1;
     }
     struct blockdev *d = blk_find(dev);
     if (!d) { err(sh, "install", "no such disk"); return 1; }
+    o.disk = d;
     struct install_progress p = { 0 };
-    pr(sh, "installing ZenithOS on %s%s...\n", d->name, erase ? " (erasing it)" : "");
-    int r = zenith_install(d, erase, &p);
+    pr(sh, "installing ZenithOS on %s%s...\n", d->name, o.erase ? " (erasing it)" : "");
+    int r = zenith_install(&o, &p);
     pr(sh, "%s%s" C_RESET "\n", r ? C_RED : C_GREEN, p.msg);
+    if (p.note[0]) pr(sh, "%s\n", p.note);
+    if (!r) pr(sh, "firmware boot entry: %s\n", p.boot_entry ? "created and first in the boot order" : "not created");
     return r ? 1 : 0;
 }
 
@@ -1069,7 +1091,150 @@ static int c_whoami(struct shell *sh, int argc, char **argv)
 static int c_hostname(struct shell *sh, int argc, char **argv)
 {
     UNUSED(argc); UNUSED(argv);
-    pr(sh, "zenith\n");
+    pr(sh, "%s\n", sys_hostname());
+    return 0;
+}
+
+/* ---- graphics, packages, modules, firmware boot entries ---- */
+
+static int c_gpu(struct shell *sh, int argc, char **argv)
+{
+    if (argc >= 3 && !strcmp(argv[1], "policy")) {
+        if (strcmp(argv[2], "auto") && strcmp(argv[2], "gop") && strcmp(argv[2], "driver")) { err(sh, "gpu", "policy is auto, gop or driver"); return 1; }
+        gpu_set_policy(argv[2]);
+        pr(sh, "graphics policy: %s (takes effect at the next start)\n", argv[2]);
+        return 0;
+    }
+    if (argc >= 2 && !strcmp(argv[1], "enable")) { gpu_reenable(); pr(sh, "graphics drivers are enabled again (next start)\n"); return 0; }
+    if (argc >= 2 && !strcmp(argv[1], "modes")) {
+        struct gpu_timing m[EDID_MAX_MODES];
+        int n = gpu_modes(m, EDID_MAX_MODES);
+        if (!n) { pr(sh, "no graphics driver is active, so the display mode cannot be changed\n"); return 0; }
+        for (int i = 0; i < n; i++)
+            pr(sh, "%4dx%-4d  %3u.%03u Hz   pixel clock %u kHz%s\n", m[i].hactive, m[i].vactive, m[i].refresh_mhz / 1000,
+               m[i].refresh_mhz % 1000, m[i].pclk_khz, m[i].from_edid_timing ? "" : "  (computed)");
+        return 0;
+    }
+    if (argc >= 3 && !strcmp(argv[1], "set")) {
+        char *end;
+        long w = strtol(argv[2], &end, 10), h = 0, hz = 0;
+        if (*end == 'x') h = strtol(end + 1, &end, 10);
+        if (*end == '@') hz = strtol(end + 1, &end, 10);
+        struct gpu_timing m[EDID_MAX_MODES];
+        int n = gpu_modes(m, EDID_MAX_MODES);
+        for (int i = 0; i < n; i++)
+            if (m[i].hactive == w && m[i].vactive == h && (!hz || (m[i].refresh_mhz + 500) / 1000 == (uint32_t)hz)) {
+                int r = gpu_apply_mode(&m[i]);
+                if (r) { err(sh, "gpu", "the adapter refused that mode"); return 1; }
+                char v[32];
+                snprintf(v, sizeof(v), "%dx%d@%u", m[i].hactive, m[i].vactive, (m[i].refresh_mhz + 500) / 1000);
+                conf_set(&sysconf, "display_mode", v);
+                size_t cn;
+                char *t = conf_format(&sysconf, &cn);
+                if (t) { sys_write_etc("zenith/system.conf", t, cn); kfree(t); }
+                pr(sh, "display mode %s\n", v);
+                return 0;
+            }
+        err(sh, "gpu", "no such mode (see: gpu modes)");
+        return 1;
+    }
+    struct gpu_status st;
+    gpu_get_status(&st);
+    pr(sh, "adapter   %s\ndriver    %s%s%s\nmonitor   %s\nmode      %dx%d at %u.%03u Hz\npolicy    %s\nstatus    %s\n", st.adapter, st.driver,
+       st.package[0] ? "  (package " : "", st.package, st.monitor[0] ? st.monitor : "unknown", st.w, st.h, st.refresh_mhz / 1000,
+       st.refresh_mhz % 1000, st.mode_policy, st.state);
+    return 0;
+}
+
+static void pkg_print_log(struct shell *sh, const struct pkg_job *j)
+{
+    for (int i = 0; i < j->nlog; i++) pr(sh, "  %s\n", j->log[i]);
+}
+
+static int c_pkg(struct shell *sh, int argc, char **argv)
+{
+    const char *cmd = argc > 1 ? argv[1] : "";
+    if (!strcmp(cmd, "update")) {
+        struct pkg_job *j = kzalloc(sizeof(*j));
+        int n = pkg_update(j);
+        pkg_print_log(sh, j);
+        pr(sh, "%d package(s) known\n", n);
+        kfree(j);
+        return 0;
+    }
+    if (!strcmp(cmd, "sources")) {
+        const struct pkg_source *src;
+        int n = pkg_sources(&src);
+        for (int i = 0; i < n; i++)
+            pr(sh, "%-12s %s  %s%s%s\n", src[i].name, src[i].url, src[i].require_signature ? "signed" : "unsigned",
+               src[i].error[0] ? "  ERROR: " : "", src[i].error);
+        return 0;
+    }
+    if (!strcmp(cmd, "search") || !strcmp(cmd, "list")) {
+        int idx[64];
+        int n = pkg_search(argc > 2 ? argv[2] : "", idx, 64);
+        for (int i = 0; i < n; i++) {
+            const struct pkg *p = pkg_at(idx[i]);
+            pr(sh, "%s%-22s %-10s %-8s %s\n", p->installed ? C_GREEN "*" C_RESET : " ", p->name, p->version, p->type, p->desc);
+        }
+        if (!n) pr(sh, "nothing found (try: pkg update)\n");
+        return 0;
+    }
+    if (!strcmp(cmd, "installed")) {
+        const struct pkg *l[64];
+        int n = pkg_installed_list(l, 64);
+        for (int i = 0; i < n; i++) pr(sh, "%-22s %-10s %s\n", l[i]->name, l[i]->version, l[i]->type);
+        return 0;
+    }
+    if (!strcmp(cmd, "info") && argc > 2) {
+        const struct pkg *p = pkg_lookup(argv[2]);
+        if (!p) { err(sh, "pkg", "unknown package"); return 1; }
+        pr(sh, "%s %s (%s, %s)\n%s\nsource %d, %s, %lu bytes\n", p->name, p->version, p->type, p->format[0] ? p->format : "zpk", p->desc,
+           p->source, p->verified ? "signed" : "NOT signed", (unsigned long)p->size);
+        for (int i = 0; i < p->ndeps; i++) pr(sh, "needs %s\n", p->depends[i]);
+        return 0;
+    }
+    if ((!strcmp(cmd, "install") || !strcmp(cmd, "remove")) && argc > 2) {
+        struct pkg_job *j = kzalloc(sizeof(*j));
+        int r = !strcmp(cmd, "install") ? pkg_install(argv[2], j) : pkg_remove(argv[2], j);
+        pkg_print_log(sh, j);
+        if (r) pr(sh, C_RED "%s" C_RESET "\n", j->error);
+        else pr(sh, C_GREEN "done" C_RESET "\n");
+        kfree(j);
+        return r ? 1 : 0;
+    }
+    err(sh, "pkg", "usage: pkg update | sources | search [text] | info <name> | install <name> | remove <name> | installed");
+    return 1;
+}
+
+static int c_module(struct shell *sh, int argc, char **argv)
+{
+    if (argc >= 3 && !strcmp(argv[1], "load")) {
+        size_t n;
+        char *img = vfs_read_file(argv[2], &n);
+        if (!img) { err(sh, "module", "cannot read that file"); return 1; }
+        char e[120] = "";
+        int r = module_load(img, n, argv[2], e, sizeof(e));
+        kfree(img);
+        if (r) { pr(sh, C_RED "%s" C_RESET "\n", e); return 1; }
+        return 0;
+    }
+    if (argc >= 3 && !strcmp(argv[1], "unload")) return module_unload(argv[2]) ? 1 : 0;
+    struct module_status m[16];
+    int n = module_list(m, 16);
+    for (int i = 0; i < n; i++) pr(sh, "%-12s %-6s %s  (%s)\n", m[i].name, m[i].version, m[i].description, m[i].origin);
+    if (!n) pr(sh, "no modules loaded\n");
+    return 0;
+}
+
+static int c_bootmgr(struct shell *sh, int argc, char **argv)
+{
+    UNUSED(argc); UNUSED(argv);
+    if (!uefi_available()) { pr(sh, "the firmware's runtime services are not available\n"); return 1; }
+    static char list[16][64];
+    int n = uefi_list_boot_entries(list, 16);
+    for (int i = 0; i < n; i++) pr(sh, "%d. %s\n", i + 1, list[i]);
+    if (!n) pr(sh, "no boot entries\n");
     return 0;
 }
 
@@ -1117,6 +1282,10 @@ static const struct cmd commands[] = {
     { "beep", c_beep, "play a tone: beep [Hz] [ms]" },
     { "volume", c_volume, "show or set the volume (0-100, mute)" },
     { "install", c_install, "install ZenithOS to a disk" },
+    { "gpu", c_gpu, "graphics adapter, driver and display mode" },
+    { "pkg", c_pkg, "install and remove packages (update, search, install ...)" },
+    { "module", c_module, "list, load and unload kernel modules" },
+    { "bootmgr", c_bootmgr, "firmware boot entries (UEFI)" },
     { "ps", c_ps, "list threads and processes" },
     { "kill", c_kill, "terminate a process" },
     { "uname", c_uname, "system name [-a]" },
@@ -1444,8 +1613,10 @@ static void prompt(struct shell *sh)
     size_t hl = strlen(session_home());
     if (!strncmp(sh->cwd, session_home(), hl) && (!sh->cwd[hl] || sh->cwd[hl] == '/')) snprintf(dir, sizeof(dir), "~%s", sh->cwd + hl);
     else strlcpy(dir, sh->cwd, sizeof(dir));
-    pr(sh, "\x1b[38;2;176;140;255m\x1b[1m%s@%s\x1b[0m \x1b[38;2;80;200;255m%s\x1b[0m %s❯\x1b[0m ",
-       session.user[0] ? session.user : "nobody", sys_hostname(), dir, sh->last_status ? C_RED : C_GREEN);
+    const char *user = session.user[0] ? session.user : "nobody";
+    pr(sh, "\x1b[38;2;176;140;255m\x1b[1m%s@%s\x1b[0m \x1b[38;2;80;200;255m%s\x1b[0m %s❯\x1b[0m ", user, sys_hostname(), dir,
+       sh->last_status ? C_RED : C_GREEN);
+    sh->pw = (int)(strlen(user) + 1 + strlen(sys_hostname()) + 1 + strlen(dir) + 3);         /* "user@host dir ❯ " */
 }
 
 static int display_len(const char *s, int bytes)
@@ -1456,18 +1627,26 @@ static int display_len(const char *s, int bytes)
     return n;
 }
 
+/* Rewrite the input line. The cursor is `*shown_cur` characters into it; the line may have wrapped over several rows,
+ * so go up to the first row, write everything, clear what is left and put the cursor where it belongs. */
 static void redraw(struct shell *sh, const char *buf, int len, int cur, int *shown_cur)
 {
-    /* move back to the start of the input, rewrite it, clear the rest */
-    if (*shown_cur) pr(sh, "\x1b[%dD", *shown_cur);
+    int cols = sh->tty->cols > 20 ? sh->tty->cols : 80;
+    int at = sh->pw + *shown_cur;
+    if (at / cols) pr(sh, "\x1b[%dA", at / cols);
+    pr(sh, "\r");
+    if (sh->pw) pr(sh, "\x1b[%dC", sh->pw);
     out(sh, buf, (size_t)len);
-    pr(sh, "\x1b[K");
-    int back = display_len(buf + cur, len - cur);
-    if (back) pr(sh, "\x1b[%dD", back);
+    int end = sh->pw + display_len(buf, len);
+    if (len && end % cols == 0) pr(sh, " \r");                /* the cursor waits at the end of the row: really start the next one */
+    pr(sh, "\x1b[K\x1b[J");
+    int want = sh->pw + display_len(buf, cur);
+    if (end / cols > want / cols) pr(sh, "\x1b[%dA", end / cols - want / cols);
+    pr(sh, "\x1b[%dG", want % cols + 1);
     *shown_cur = display_len(buf, cur);
 }
 
-static void complete(struct shell *sh, char *buf, int *len, int *cur)
+static bool complete(struct shell *sh, char *buf, int *len, int *cur)
 {
     /* complete the word before the cursor: commands first word, else paths */
     int start = *cur;
@@ -1515,7 +1694,7 @@ static void complete(struct shell *sh, char *buf, int *len, int *cur)
             start = *cur - wl;
         }
     }
-    if (!nc) return;
+    if (!nc) return false;
     /* longest common prefix */
     int common = (int)strlen(cands[0]);
     for (int i = 1; i < nc; i++) {
@@ -1542,7 +1721,9 @@ static void complete(struct shell *sh, char *buf, int *len, int *cur)
         for (int i = 0; i < nc; i++) pr(sh, "%s  ", cands[i]);
         pr(sh, "\n");
         prompt(sh);
+        return true;
     }
+    return false;
 }
 
 static bool read_line(struct shell *sh, char *buf, int cap)
@@ -1563,6 +1744,7 @@ static bool read_line(struct shell *sh, char *buf, int cap)
         bool ctrl = ev.mods & MOD_CTRL;
         if (ev.key == KEY_ENTER || ev.key == KEY_KPENTER) {
             buf[len] = 0;
+            if (cur != len) redraw(sh, buf, len, len, &shown);       /* the line ends below the cursor */
             pr(sh, "\n");
             return true;
         }
@@ -1611,15 +1793,8 @@ static bool read_line(struct shell *sh, char *buf, int cap)
             cur = len;
         } else if (ev.key == KEY_TAB) {
             buf[len] = 0;
-            complete(sh, buf, &len, &cur);
-            /* completion may have printed candidates and a new prompt */
-            pr(sh, "\r");
-            prompt(sh);
-            out(sh, buf, (size_t)len);
-            pr(sh, "\x1b[K");
-            int back = display_len(buf + cur, len - cur);
-            if (back) pr(sh, "\x1b[%dD", back);
-            shown = display_len(buf, cur);
+            if (complete(sh, buf, &len, &cur)) shown = 0;          /* it listed candidates and printed a new prompt */
+            redraw(sh, buf, len, cur, &shown);
             continue;
         } else if (ev.ch >= 32 && !ctrl) {
             char enc[4];
