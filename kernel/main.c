@@ -15,6 +15,8 @@
 #include <block.h>
 #include <audio.h>
 #include <sys.h>
+#include <pkg.h>
+#include <gpu.h>
 
 struct bootinfo *boot_info;
 
@@ -63,10 +65,13 @@ NORETURN void kmain(struct bootinfo *bi)
     if (bi->initrd_size) vfs_load_tar(P2V(bi->initrd_phys), bi->initrd_size);
     fat_automount();
     sys_init();
+    pkg_init();
     net_init();
+    gpu_boot_local();
 
     bootcon_status("Starting desktop", 90);
     wm_init();
+    gpu_start();
     klog("boot: done in %lu ms, %lu MiB free", uptime_ms(), (pmm_free_pages() * PAGE_SIZE) >> 20);
 
     for (;;) sched_sleep(1000);

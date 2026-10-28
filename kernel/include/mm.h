@@ -63,6 +63,7 @@ void     vmm_destroy_space(addrspace_t *as);
 void     vmm_switch(addrspace_t *as);
 void     vmm_set_cache(uint64_t phys, uint64_t size, uint64_t mode_flags);
 void    *vmm_map_mmio(uint64_t phys, uint64_t size);
+void    *vmm_map_mmio_wc(uint64_t phys, uint64_t size);
 void     vmm_identity_low(bool on);
 bool     vmm_user_ok(addrspace_t *as, uint64_t va, uint64_t len, bool write);
 

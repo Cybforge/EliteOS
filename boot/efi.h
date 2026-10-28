@@ -282,6 +282,12 @@ typedef struct EFI_GRAPHICS_OUTPUT_PROTOCOL {
     EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE *Mode;
 } EFI_GRAPHICS_OUTPUT_PROTOCOL;
 
+/* EFI_EDID_ACTIVE_PROTOCOL / EFI_EDID_DISCOVERED_PROTOCOL: the monitor's EDID block(s) */
+typedef struct {
+    uint32_t SizeOfEdid;
+    uint8_t *Edid;
+} EFI_EDID_PROTOCOL;
+
 /* ---- GUIDs ------------------------------------------------------------- */
 
 #define EFI_LOADED_IMAGE_PROTOCOL_GUID \
@@ -292,6 +298,10 @@ typedef struct EFI_GRAPHICS_OUTPUT_PROTOCOL {
     { 0x09576E92, 0x6D3F, 0x11d2, { 0x8E, 0x39, 0x00, 0xA0, 0xC9, 0x69, 0x72, 0x3B } }
 #define EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID \
     { 0x9042A9DE, 0x23DC, 0x4A38, { 0x96, 0xFB, 0x7A, 0xDE, 0xD0, 0x80, 0x51, 0x6A } }
+#define EFI_EDID_ACTIVE_PROTOCOL_GUID \
+    { 0xBD8C1056, 0x9F36, 0x44EC, { 0x92, 0xA8, 0xA6, 0x33, 0x7F, 0x81, 0x79, 0x86 } }
+#define EFI_EDID_DISCOVERED_PROTOCOL_GUID \
+    { 0x1C0C34F6, 0xD380, 0x41FA, { 0xA0, 0x49, 0x8A, 0xD0, 0x6C, 0x1A, 0x66, 0xAA } }
 #define EFI_ACPI_20_TABLE_GUID \
     { 0x8868E871, 0xE4F1, 0x11d3, { 0xBC, 0x22, 0x00, 0x80, 0xC7, 0x3C, 0x88, 0x81 } }
 #define EFI_ACPI_10_TABLE_GUID \

@@ -523,6 +523,18 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ih, EFI_SYSTEM_TABLE *st)
         while (v && v[i] && i < 63) { bi->firmware_vendor[i] = (char)(v[i] < 128 ? v[i] : '?'); i++; }
     }
 
+    /* The monitor's EDID, so the kernel knows which modes and refresh rates it supports. */
+    {
+        EFI_GUID ids[2] = { EFI_EDID_ACTIVE_PROTOCOL_GUID, EFI_EDID_DISCOVERED_PROTOCOL_GUID };
+        for (int i = 0; i < 2 && !bi->edid_size; i++) {
+            EFI_EDID_PROTOCOL *e = NULL;
+            if (!EFI_ERROR(BS->LocateProtocol(&ids[i], NULL, (void **)&e)) && e && e->Edid && e->SizeOfEdid >= 128) {
+                bi->edid_size = e->SizeOfEdid > sizeof(bi->edid) ? sizeof(bi->edid) : e->SizeOfEdid;
+                memcpy(bi->edid, e->Edid, bi->edid_size);
+            }
+        }
+    }
+
     /* ACPI RSDP. */
     {
         EFI_GUID a2 = EFI_ACPI_20_TABLE_GUID, a1 = EFI_ACPI_10_TABLE_GUID;

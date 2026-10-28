@@ -74,6 +74,26 @@ $(BUILD)/kernel.elf: $(KOBJ) $(BUILD)/ksyms.o kernel/kernel.ld
 	@echo "  LD      $@"
 	@$(LD) $(KLDFLAGS) -o $@ $(KOBJ) $(BUILD)/ksyms.o
 
+# ---------------------------------------------------------------- driver modules
+
+# Loadable modules (.zko): drivers/<name>/*.c linked into one relocatable
+# object. They are not part of the image; they are packaged (make store) and
+# downloaded by the systems that have the hardware.
+MCFLAGS := $(filter-out -g -MMD -MP,$(KCFLAGS)) -fno-common -g0
+MODS    := $(patsubst drivers/%,$(BUILD)/modules/%.zko,$(wildcard drivers/*))
+
+.SECONDEXPANSION:
+$(BUILD)/modules/%.zko: $$(wildcard drivers/$$*/*.c) $(wildcard kernel/include/*.h)
+	@mkdir -p $(dir $@)
+	@echo "  MODULE  $@"
+	@rm -f $@.*.o
+	@for f in $(filter %.c,$^); do $(CC) $(MCFLAGS) -c $$f -o $@.$$(basename $$f).o || exit 1; done
+	@$(LD) -r -o $@ $@.*.o
+	@strip --strip-debug $@
+	@rm -f $@.*.o
+
+modules: $(MODS)
+
 # ---------------------------------------------------------------- bootloader
 
 BCFLAGS := -target x86_64-unknown-windows -ffreestanding -fshort-wchar -mno-red-zone \
@@ -162,7 +182,7 @@ $(BUILD)/zenithos.iso: $(BUILD)/efiboot.img
 	  -e --interval:appended_partition_2:all:: -no-emul-boot \
 	  -o $@ $(BUILD)/iso 2>/dev/null
 
-.PHONY: all iso kernel disk test run run-fast run-headless run-usb run-disk clean FORCE
+.PHONY: all iso kernel modules disk test run run-fast run-headless run-usb run-disk clean FORCE
 .DEFAULT_GOAL := all
 
 all: $(BUILD)/zenithos.iso

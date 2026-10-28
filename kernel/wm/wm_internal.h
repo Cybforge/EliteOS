@@ -26,6 +26,7 @@ void wm_kick(void);
 
 /* desktop shell hooks, all called with wm_mtx held */
 void desktop_init(int w, int h);
+void desktop_resize(int w, int h);
 void desktop_draw_background(surface_t *s, rect_t clip);
 void desktop_draw_overlay(surface_t *s, rect_t clip);
 bool desktop_mouse_overlay(int x, int y, int buttons, int pressed, int released, int wheel);

@@ -331,7 +331,7 @@ static int page_users(struct settings *st, ui_t *u, surface_t *s, int x, int y, 
         const char *homedir = session_home();
         char h[VFS_PATH_MAX];
         if (me) snprintf(h, sizeof(h), "%s", homedir);
-        else snprintf(h, sizeof(h), "%s/home/%s", sys_persist_root() ? sys_persist_root() : "", sel->name);
+        else snprintf(h, sizeof(h), "/home/%s", sel->name);
         gfx_text_ellipsis(s, font_ui, fx, y + 50, fw, h, theme.text_faint);
         snprintf(l, sizeof(l), "%s", sel->hash[0] ? tr("Protected by a password") : tr("No password: anyone can sign in"));
         gfx_text(s, font_ui, fx, y + 74, l, sel->hash[0] ? theme.success : theme.warning);

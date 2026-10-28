@@ -179,10 +179,10 @@ void vmm_set_cache(uint64_t phys, uint64_t size, uint64_t mode)
     spin_unlock(&vmm_lock);
 }
 
-void *vmm_map_mmio(uint64_t phys, uint64_t size)
+static void *map_mmio(uint64_t phys, uint64_t size, uint64_t cache)
 {
     if (phys + size <= hhdm_size) {
-        vmm_set_cache(phys, size, PTE_UC);
+        vmm_set_cache(phys, size, cache);
         return P2V(phys);
     }
     /* above the direct map: give it its own window in the vmalloc area */
@@ -191,9 +191,14 @@ void *vmm_map_mmio(uint64_t phys, uint64_t size)
     uint64_t va = __atomic_fetch_add(&vmalloc_next, (pages + 1) * PAGE_SIZE, __ATOMIC_RELAXED);
     for (uint64_t i = 0; i < pages; i++)
         vmm_map(&kernel_space, va + i * PAGE_SIZE, ALIGN_DOWN(phys, PAGE_SIZE) + i * PAGE_SIZE,
-                PTE_W | PTE_G | PTE_NX | PTE_UC);
+                PTE_W | PTE_G | PTE_NX | cache);
     return (void *)(va + off);
 }
+
+void *vmm_map_mmio(uint64_t phys, uint64_t size) { return map_mmio(phys, size, PTE_UC); }
+
+/* write-combined: for framebuffers */
+void *vmm_map_mmio_wc(uint64_t phys, uint64_t size) { return map_mmio(phys, size, PTE_WC); }
 
 /* Identity map of the low 2 MiB, needed only while APs start up. */
 void vmm_identity_low(bool on)

@@ -12,6 +12,7 @@
 #include "wm_internal.h"
 #include <audio.h>
 #include <dev.h>
+#include <gpu.h>
 #include <mm.h>
 #include <sched.h>
 #include <x86.h>
@@ -31,6 +32,8 @@ static surface_t *screen;
 static uint32_t *fb;
 static int fb_stride;
 static bool fb_swap;
+static void (*present_hook)(int x, int y, int w, int h);
+static int frame_ms = 14;                       /* one frame of the monitor's refresh rate */
 static int SW, SH;
 static int next_id = 1;
 
@@ -485,6 +488,7 @@ static void flush(rect_t r)
             }
         }
     }
+    if (present_hook) present_hook(r.x, r.y, r.w, r.h);
 }
 
 /* ------------------------------------------------------------------------
@@ -1314,10 +1318,10 @@ static int wm_thread(void *arg)
         bool anim = run_animations(now);
         anim |= desktop_tick(now);
 
-        if (ndirty && now - last_compose < 14) {
-            /* cap at ~70 fps; come back when the frame is due */
+        if (ndirty && now - last_compose < (uint64_t)frame_ms) {
+            /* one frame per refresh of the monitor; come back when the next one is due */
             mutex_unlock(&wm_mtx);
-            sched_sleep(14 - (now - last_compose));
+            sched_sleep((uint64_t)frame_ms - (now - last_compose));
             continue;
         }
         rect_t work[MAX_DIRTY];
@@ -1340,7 +1344,7 @@ static int wm_thread(void *arg)
 
         spin_lock(&wake_lock);
         if (!wake_pending && !ndirty) {
-            uint64_t timeout = anim ? 15 : 250;
+            uint64_t timeout = anim ? (uint64_t)frame_ms : 250;
             sched_wait(input_chan(), &wake_lock, timeout);
         }
         wake_pending = 0;
@@ -1350,14 +1354,67 @@ static int wm_thread(void *arg)
 }
 
 
+void wm_set_refresh(uint32_t refresh_mhz)
+{
+    if (refresh_mhz < 24000) refresh_mhz = 60000;
+    int ms = (int)(1000000u / refresh_mhz);
+    frame_ms = CLAMP(ms, 2, 40);
+}
+
+/* the display changed (a graphics driver took over, or another mode was chosen): new framebuffer, new size */
+bool wm_set_framebuffer(void *newfb, int w, int h, int pitch, bool swap, void (*present)(int, int, int, int))
+{
+    surface_t *ns = surface_new(w, h);
+    if (!ns) return false;
+    mutex_lock(&wm_mtx);
+    surface_t *old = screen;
+    int old_w = SW, old_h = SH;
+    screen = ns;
+    fb = newfb;
+    fb_stride = pitch / 4;
+    fb_swap = swap;
+    present_hook = present;
+    SW = w;
+    SH = h;
+    surface_free(old);
+    wm_mx = CLAMP(wm_mx, 0, w - 1);
+    wm_my = CLAMP(wm_my, 0, h - 1);
+    if (w != old_w || h != old_h) desktop_resize(w, h);              /* same size: the wallpaper is still right */
+    for (window_t *win = wm_list; win; win = win->next) {
+        if (win->state == WS_MAXIMIZED) {
+            win->x = 0;
+            win->y = 0;
+            set_request(win, SW, SH - desktop_taskbar_h() - title_h(win));
+        } else {
+            win->x = CLAMP(win->x, 80 - win->cw, SW - 80);
+            win->y = CLAMP(win->y, 0, MAX(0, SH - desktop_taskbar_h() - 40));
+        }
+    }
+    ndirty = 0;
+    wm_dirty(R(0, 0, SW, SH));
+    mutex_unlock(&wm_mtx);
+    wm_kick();
+    klog("wm: display is now %dx%d", w, h);
+    return true;
+}
+
 void wm_init(void)
 {
     struct boot_framebuffer *bfb = &boot_info->fb;
-    SW = (int)bfb->width;
-    SH = (int)bfb->height;
-    fb = P2V(bfb->phys);
-    fb_stride = (int)(bfb->pitch / 4);
-    fb_swap = bfb->format == FB_FORMAT_RGBX;
+    struct gpu_fb gfb;
+    if (gpu_early_display(&gfb)) {                       /* a graphics driver already switched the display */
+        SW = gfb.w;
+        SH = gfb.h;
+        fb = gfb.vaddr;
+        fb_stride = gfb.pitch / 4;
+        fb_swap = gfb.swap;
+    } else {
+        SW = (int)bfb->width;
+        SH = (int)bfb->height;
+        fb = P2V(bfb->phys);
+        fb_stride = (int)(bfb->pitch / 4);
+        fb_swap = bfb->format == FB_FORMAT_RGBX;
+    }
     screen = surface_new(SW, SH);
     if (!screen) panic("wm: cannot allocate the screen buffer");
     theme_init();

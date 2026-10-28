@@ -1428,6 +1428,27 @@ bool desktop_tick(uint64_t now)
     return anim || ntoasts > 0;
 }
 
+/* the screen size changed */
+void desktop_resize(int w, int h)
+{
+    surface_t *a = surface_new(w, h), *b = surface_new(w, h);
+    if (!a || !b) {
+        if (a) surface_free(a);
+        if (b) surface_free(b);
+        return;
+    }
+    surface_free(wall);
+    surface_free(wall_blur);
+    wall = a;
+    wall_blur = b;
+    SW = w;
+    SH = h;
+    gen_wallpaper(wall, wallpaper_style);
+    make_blur();
+    desktop_windows_changed();
+    wm_dirty(R(0, 0, SW, SH));
+}
+
 void desktop_init(int w, int h)
 {
     SW = w;

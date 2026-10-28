@@ -58,6 +58,8 @@ struct bootinfo {
     uint32_t mmap_count;
     uint32_t boot_flags;
     char     firmware_vendor[64];
+    uint32_t edid_size;           /* the monitor's EDID as the firmware read it, 0 if it did not */
+    uint8_t  edid[256];
     /* raw boot files, kept in memory so the installer can copy them to a disk */
     uint64_t kernel_file_phys;
     uint64_t kernel_file_size;
