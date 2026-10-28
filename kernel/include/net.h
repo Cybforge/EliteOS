@@ -58,6 +58,7 @@ int  tcp_open_count(void);
 #define TCPF_ERR        0x08        /* reset or timed out */
 #define TCPF_CONNECTING 0x10
 #define TCPF_CLOSED     0x20
+#define TCPF_TIMEDOUT   0x40
 tcp_sock_t *tcp_connect_start(uint32_t ip, uint16_t port);
 uint32_t tcp_flags(tcp_sock_t *s);
 long   tcp_send_nb(tcp_sock_t *s, const void *data, size_t len);      /* bytes taken (0: full), -1 on error */
@@ -84,6 +85,7 @@ long      udp_ep_recv(udp_ep_t *e, void *buf, size_t cap, uint32_t *from, uint16
 bool      udp_ep_ready(udp_ep_t *e);
 void      udp_ep_close(udp_ep_t *e);
 bool      net_is_local_ip(uint32_t ip);                                /* 127.0.0.0/8 or one of our addresses */
+uint32_t  net_src_ip(uint32_t dst);                                      /* our address on the way to dst (0: no route) */
 
 /* HTTP(S) requests */
 struct http_result {

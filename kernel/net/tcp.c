@@ -51,6 +51,7 @@ struct tcp_sock {
     size_t rx_head, rx_len;
     struct ooo_seg *ooo;
     bool peer_fin, reset, window_closed;
+    bool timed_out;                 /* gave up retransmitting */
     bool orphan;                    /* closed by its owner; the timer frees it once the FIN is acknowledged */
     uint64_t orphan_at;
     struct tcp_listener *lst;       /* the listener this connection is still waiting to be accepted from */
@@ -421,6 +422,7 @@ void tcp_timer(void)
         if (++s->retries > 8) {
             if (s->state == S_SYN_RCVD) { s->lst = NULL; s->state = S_FREE; continue; }
             s->reset = true;
+            s->timed_out = true;
             s->state = S_CLOSED;
             sched_wake(&s->chan);
             woke = true;
@@ -581,6 +583,7 @@ uint32_t tcp_flags(tcp_sock_t *s)
     if (s->reset) f |= TCPF_ERR;
     if (s->state == S_SYN_SENT) f |= TCPF_CONNECTING;
     if (s->state == S_CLOSED) f |= TCPF_CLOSED;
+    if (s->timed_out) f |= TCPF_TIMEDOUT;
     if ((s->state == S_ESTABLISHED || s->state == S_CLOSE_WAIT) && !s->fin_queued && s->tx_len < TX_CAP) f |= TCPF_WRITE;
     spin_unlock(&tcp_lock);
     return f;
