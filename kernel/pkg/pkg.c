@@ -11,6 +11,7 @@
 #include <sys.h>
 #include <pkg.h>
 #include <sched.h>
+#include <audio.h>
 
 #define MAX_PKGS 768
 #define MAX_SOURCES 8
@@ -24,6 +25,7 @@ static int nsources;
 static struct pkg *inst;                        /* what /var/lib/zenith/pkg says */
 static int ninst;
 static mutex_t pkg_mtx = MUTEX_INIT("pkg");
+static spinlock_t dlock = SPINLOCK_INIT("pkgdata");      /* short: guards the lists the store reads while a transaction runs */
 static char proot[96];                          /* "" normally; the zenith folder of another volume while installing onto it */
 
 /* a path below the package root: under(buf, n, "/opt/%s", name) */
@@ -135,11 +137,20 @@ static void apply_field(struct pkg *p, const char *k, const char *v)
     else if (!strcasecmp(k, "Module")) strlcpy(p->module, v, sizeof(p->module));
     else if (!strcasecmp(k, "Personality")) strlcpy(p->personality, v, sizeof(p->personality));
     else if (!strcasecmp(k, "Format")) strlcpy(p->format, v, sizeof(p->format));
+    else if (!strcasecmp(k, "Title") || !strcasecmp(k, "Name")) strlcpy(p->title, v, sizeof(p->title));
+    else if (!strcasecmp(k, "Icon")) strlcpy(p->icon, v, sizeof(p->icon));
+    else if (!strcasecmp(k, "Exec")) strlcpy(p->exec, v, sizeof(p->exec));
     else if (!strcasecmp(k, "Size")) p->size = (uint64_t)strtol(v, NULL, 10);
     else if (!strcasecmp(k, "Installed-Size")) p->installed_size = (uint64_t)strtol(v, NULL, 10);
     else if (!strcasecmp(k, "SHA256")) parse_hex(v, p->sha256, 32);
     else if (!strcasecmp(k, "Depends")) split_words(v, p->depends, PKG_MAX_DEPS, &p->ndeps, ',');
-    else if (!strcasecmp(k, "Provides")) split_words(v, p->provides, 4, &p->nprov, ',');
+    else if (!strcasecmp(k, "Provides")) split_words(v, p->provides, 6, &p->nprov, ',');
+    else if (!strcasecmp(k, "Requires")) {
+        char tmp[4][64];
+        int n = 0;
+        split_words(v, tmp, 4, &n, ',');
+        for (int i = 0; i < n; i++) strlcpy(p->requires[p->nreq++], tmp[i], sizeof(p->requires[0]));
+    }
     else if (!strcasecmp(k, "Match-PCI")) {
         for (const char *s = v; *s && p->npci < PKG_MAX_PCI;) {
             while (*s == ' ') s++;
@@ -311,7 +322,7 @@ static void list_path(const struct pkg_source *s, const char *what, char *out, s
 }
 
 /* read one source's cached index into the in-memory list */
-static int load_cached_source(int si)
+static int load_cached_source(int si, struct pkg *out, int max)
 {
     char pp[96], sp[96];
     list_path(&sources[si], "Packages", pp, sizeof(pp));
@@ -328,14 +339,14 @@ static int load_cached_source(int si)
         kfree(text);
         return 0;
     }
-    int got = parse_stanzas(text, pkgs + npkgs, MAX_PKGS - npkgs, si, verified);
-    npkgs += got;
+    int got = parse_stanzas(text, out, max, si, verified);
     kfree(text);
     return got;
 }
 
 static void mark_installed(void)
 {
+    spin_lock(&dlock);
     for (int i = 0; i < npkgs; i++) {
         pkgs[i].installed = false;
         for (int k = 0; k < ninst; k++)
@@ -344,16 +355,36 @@ static void mark_installed(void)
                 strlcpy(pkgs[i].installed_version, inst[k].version, sizeof(pkgs[i].installed_version));
             }
     }
+    spin_unlock(&dlock);
+}
+
+/* read every source's cached index; the visible list is replaced in one step */
+static void reload_cached(void)
+{
+    struct pkg *fresh = kzalloc(MAX_PKGS * sizeof(*fresh));
+    if (!fresh) return;
+    int n = 0;
+    for (int i = 0; i < nsources; i++) {
+        sources[i].count = load_cached_source(i, fresh + n, MAX_PKGS - n);
+        n += sources[i].count;
+    }
+    spin_lock(&dlock);
+    memcpy(pkgs, fresh, (size_t)n * sizeof(*fresh));
+    if (n < npkgs) memset(pkgs + n, 0, (size_t)(npkgs - n) * sizeof(*fresh));
+    npkgs = n;
+    spin_unlock(&dlock);
+    kfree(fresh);
 }
 
 static void load_installed(void)
 {
-    ninst = 0;
+    struct pkg *fresh = kzalloc(MAX_PKGS * sizeof(*fresh));
+    int count = 0;
     struct vfs_dirent de[128];
     char dbdir[VFS_PATH_MAX];
     under(dbdir, sizeof(dbdir), "/var/lib/zenith/pkg");
     int n = vfs_list(dbdir, de, 128);
-    for (int i = 0; i < n && ninst < MAX_PKGS; i++) {
+    for (int i = 0; i < n && count < MAX_PKGS; i++) {
         size_t l = strlen(de[i].name);
         if (l < 6 || strcmp(de[i].name + l - 5, ".info")) continue;
         char path[VFS_PATH_MAX];
@@ -361,9 +392,14 @@ static void load_installed(void)
         size_t sz;
         char *t = vfs_read_file(path, &sz);
         if (!t) continue;
-        ninst += parse_stanzas(t, inst + ninst, MAX_PKGS - ninst, -1, true);
+        count += parse_stanzas(t, fresh + count, MAX_PKGS - count, -1, true);
         kfree(t);
     }
+    spin_lock(&dlock);
+    memcpy(inst, fresh, (size_t)count * sizeof(*fresh));
+    ninst = count;
+    spin_unlock(&dlock);
+    kfree(fresh);
     mark_installed();
 }
 
@@ -373,8 +409,7 @@ void pkg_init(void)
     if (!inst) inst = kzalloc(MAX_PKGS * sizeof(*inst));
     mutex_lock(&pkg_mtx);
     load_sources();
-    npkgs = 0;
-    for (int i = 0; i < nsources; i++) sources[i].count = load_cached_source(i);
+    reload_cached();
     load_installed();
     mutex_unlock(&pkg_mtx);
     klog("pkg: %d source(s), %d known package(s), %d installed", nsources, npkgs, ninst);
@@ -395,7 +430,8 @@ int pkg_update(struct pkg_job *job)
     mutex_lock(&pkg_mtx);
     sys_mkdir_p("/var/lib/zenith/lists");
     load_sources();
-    npkgs = 0;
+    struct pkg *fresh = kzalloc(MAX_PKGS * sizeof(*fresh));
+    int nfresh = 0;
     for (int i = 0; i < nsources; i++) {
         struct pkg_source *s = &sources[i];
         stage(job, 100 * i / MAX(1, nsources), "Reading the package list of %s", s->name);
@@ -408,16 +444,24 @@ int pkg_update(struct pkg_job *job)
         if (net_http_download(url, pp, 8u << 20, NULL, NULL, err, sizeof(err))) {
             snprintf(s->error, sizeof(s->error), "%s", err);
             pkg_log(job, "%s: %s", s->name, err);
-            s->count = load_cached_source(i);                 /* fall back to what we had */
+            s->count = load_cached_source(i, fresh + nfresh, MAX_PKGS - nfresh);          /* fall back to what we had */
+            nfresh += s->count;
             continue;
         }
         snprintf(url, sizeof(url), "%s/Packages.sig", s->url);
         if (net_http_download(url, sp, 4096, NULL, NULL, err, sizeof(err))) vfs_unlink(sp, false);
-        s->count = load_cached_source(i);
+        s->count = load_cached_source(i, fresh + nfresh, MAX_PKGS - nfresh);
+        nfresh += s->count;
         s->ok = s->count > 0 || !s->error[0];
         if (s->error[0]) pkg_log(job, "%s: %s", s->name, s->error);
         else pkg_log(job, "%s: %d package(s)", s->name, s->count);
     }
+    spin_lock(&dlock);
+    memcpy(pkgs, fresh, (size_t)nfresh * sizeof(*fresh));
+    if (nfresh < npkgs) memset(pkgs + nfresh, 0, (size_t)(npkgs - nfresh) * sizeof(*fresh));
+    npkgs = nfresh;
+    spin_unlock(&dlock);
+    kfree(fresh);
     mark_installed();
     mutex_unlock(&pkg_mtx);
     return npkgs;
@@ -825,4 +869,164 @@ int pkg_install(const char *name, struct pkg_job *job)
     mutex_unlock(&pkg_mtx);
     if (job) { job->result = r; job->percent = 100; job->finished = true; if (!r) stage(job, 100, "Done"); }
     return r;
+}
+
+/* ------------------------------------------------------------------------
+ * what the store shows
+ * ---------------------------------------------------------------------- */
+
+static void brief_of(const struct pkg *p, struct pkg_brief *b)
+{
+    memset(b, 0, sizeof(*b));
+    strlcpy(b->name, p->name, sizeof(b->name));
+    strlcpy(b->title, p->title[0] ? p->title : p->name, sizeof(b->title));
+    strlcpy(b->version, p->version, sizeof(b->version));
+    strlcpy(b->type, p->type, sizeof(b->type));
+    strlcpy(b->category, p->category[0] ? p->category : "Other", sizeof(b->category));
+    strlcpy(b->desc, p->desc, sizeof(b->desc));
+    strlcpy(b->installed_version, p->installed_version, sizeof(b->installed_version));
+    if (p->source >= 0 && p->source < nsources) strlcpy(b->source, sources[p->source].name, sizeof(b->source));
+    b->size = p->size;
+    b->installed = p->installed;
+    b->verified = p->verified;
+    b->update = p->installed && ver_cmp(p->version, p->installed_version) > 0;
+}
+
+int pkg_search_brief(const char *q, const char *category, bool installed_only, struct pkg_brief *out, int max)
+{
+    int n = 0;
+    spin_lock(&dlock);
+    if (installed_only) {
+        /* what is installed, whether or not any source still lists it */
+        for (int i = 0; i < ninst && n < max; i++) {
+            if (!strcmp(inst[i].type, "driver") && !*q) { /* drivers are listed too: they are installed software */ }
+            if (*q && !strstr_ci(inst[i].name, q) && !strstr_ci(inst[i].title, q) && !strstr_ci(inst[i].desc, q)) continue;
+            brief_of(&inst[i], &out[n]);
+            out[n].installed = true;
+            strlcpy(out[n].installed_version, inst[i].version, sizeof(out[n].installed_version));
+            for (int k = 0; k < npkgs; k++)
+                if (!strcmp(pkgs[k].name, inst[i].name) && ver_cmp(pkgs[k].version, inst[i].version) > 0) out[n].update = true;
+            n++;
+        }
+        spin_unlock(&dlock);
+        return n;
+    }
+    for (int score = 4; score >= 1; score--) {
+        for (int i = 0; i < npkgs && n < max; i++) {
+            const struct pkg *p = &pkgs[i];
+            if (best(p->name) != p) continue;                    /* one entry per name: the best version */
+            if (!*q && (!strcmp(p->type, "driver") || !strcmp(p->type, "library"))) continue;
+            if (category && *category && strcasecmp(category, p->category[0] ? p->category : "Other")) continue;
+            int s = 0;
+            if (!*q) s = 1;
+            else if (!strncasecmp(p->name, q, strlen(q)) || !strncasecmp(p->title, q, strlen(q))) s = 4;
+            else if (strstr_ci(p->name, q) || strstr_ci(p->title, q)) s = 3;
+            else if (strstr_ci(p->desc, q)) s = 2;
+            else if (strstr_ci(p->category, q)) s = 1;
+            for (int k = 0; k < p->nprov && !s; k++) if (strstr_ci(p->provides[k], q)) s = 1;
+            if (s != score) continue;
+            brief_of(p, &out[n++]);
+        }
+    }
+    spin_unlock(&dlock);
+    return n;
+}
+
+int pkg_categories(char out[][24], int *counts, int max)
+{
+    int n = 0;
+    spin_lock(&dlock);
+    for (int i = 0; i < npkgs; i++) {
+        const struct pkg *p = &pkgs[i];
+        if (best(p->name) != p || !strcmp(p->type, "driver") || !strcmp(p->type, "library")) continue;
+        const char *c = p->category[0] ? p->category : "Other";
+        int k = 0;
+        while (k < n && strcasecmp(out[k], c)) k++;
+        if (k == n) {
+            if (n >= max) continue;
+            strlcpy(out[n], c, 24);
+            counts[n++] = 0;
+        }
+        counts[k]++;
+    }
+    spin_unlock(&dlock);
+    return n;
+}
+
+bool pkg_full(const char *name, struct pkg *out)
+{
+    spin_lock(&dlock);
+    const struct pkg *p = best(name);
+    if (p) *out = *p;
+    spin_unlock(&dlock);
+    return p != NULL;
+}
+
+/* ------------------------------------------------------------------------
+ * will it run here?
+ * ---------------------------------------------------------------------- */
+
+__attribute__((weak)) bool abi_available(const char *personality)
+{
+    return !personality[0] || !strcmp(personality, "zenith");
+}
+
+bool sys_has_feature(const char *name)
+{
+    if (!strcmp(name, "net")) {
+        struct net_info ni;
+        return net_get_info(&ni);
+    }
+    if (!strcmp(name, "display:wm")) return true;
+    if (!strcmp(name, "audio")) return audio_available();
+    if (!strncmp(name, "abi:", 4)) return abi_available(name + 4);
+    return false;
+}
+
+void pkg_verdict_for(const char *name, struct pkg_verdict *v)
+{
+    memset(v, 0, sizeof(*v));
+    struct pkg p;
+    if (!pkg_full(name, &p)) {
+        v->code = PV_UNKNOWN;
+        snprintf(v->text, sizeof(v->text), "%s is not in any package source", name);
+        return;
+    }
+    if (strcmp(p.arch, "x86_64") && strcmp(p.arch, "all")) {
+        v->code = PV_BAD_ARCH;
+        snprintf(v->text, sizeof(v->text), "built for %s, this computer is x86_64", p.arch);
+        return;
+    }
+    if (p.personality[0] && !abi_available(p.personality)) {
+        v->code = PV_NO_ABI;
+        snprintf(v->text, sizeof(v->text), "needs the \"%s\" program interface, which this system does not provide", p.personality);
+        return;
+    }
+    for (int i = 0; i < p.nreq; i++) {
+        if (!sys_has_feature(p.requires[i])) {
+            v->code = PV_NO_FEATURE;
+            snprintf(v->text, sizeof(v->text), "needs %s, which this computer or this version of ZenithOS does not offer", p.requires[i]);
+            return;
+        }
+    }
+    const struct pkg *plan[MAX_PLAN];
+    char err[200] = "";
+    int n = pkg_plan(name, plan, MAX_PLAN, err, sizeof(err));
+    if (n < 0) {
+        v->code = PV_MISSING_DEP;
+        strlcpy(v->text, err, sizeof(v->text));
+        return;
+    }
+    for (int i = 0; i < n; i++) {
+        v->download += plan[i]->size;
+        v->installed += plan[i]->installed_size;
+    }
+    v->extra_packages = n > 1 ? n - 1 : 0;
+    if (n > 1) {
+        v->code = PV_NEEDS_DEPS;
+        snprintf(v->text, sizeof(v->text), "installs %d more package%s it needs", n - 1, n == 2 ? "" : "s");
+    } else {
+        v->code = PV_OK;
+        snprintf(v->text, sizeof(v->text), "%s", n == 0 ? "already installed" : "ready to install");
+    }
 }

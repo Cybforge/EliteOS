@@ -30,7 +30,7 @@ struct pkg {
     char homepage[96];
     char depends[PKG_MAX_DEPS][64]; /* "name" or "name (>= 1.2)" */
     int ndeps;
-    char provides[4][64];
+    char provides[6][64];
     int nprov;
     uint32_t pci[PKG_MAX_PCI];      /* vendor << 16 | device */
     int npci;
@@ -38,6 +38,11 @@ struct pkg {
     uint8_t sha256[32];
     uint64_t size;                  /* download size */
     uint64_t installed_size;
+    char title[48];                 /* the name to show ("Mozilla Firefox"), the package name if empty */
+    char icon[24];                  /* a built-in icon name for the store */
+    char exec[96];                  /* apps: the program to start, relative to the package folder */
+    char requires[4][32];           /* what the system has to offer: "net", "display:wayland", "audio" ... */
+    int nreq;
     char module[48];                /* drivers: the .zko inside the package */
     char personality[16];           /* apps: which system call interface they use ("zenith", "linux") */
     char format[12];                /* where it came from: "zpk" (native) or "apk" */
@@ -67,6 +72,29 @@ struct pkg_job {
     char error[200];
     volatile bool cancel;
 };
+
+/* what a list of packages looks like to the store (copies, safe to hold while the lists are refreshed) */
+struct pkg_brief {
+    char name[48], title[48], version[24], type[12], category[24], desc[140], source[24];
+    char installed_version[24];
+    uint64_t size;
+    bool installed, verified, update;
+};
+int  pkg_search_brief(const char *query, const char *category, bool installed_only, struct pkg_brief *out, int max);
+int  pkg_categories(char out[][24], int *counts, int max);
+bool pkg_full(const char *name, struct pkg *out);          /* a copy of the best candidate */
+
+/* would this package install and run here? (checks only, nothing is downloaded) */
+enum { PV_OK, PV_NEEDS_DEPS, PV_NO_ABI, PV_NO_FEATURE, PV_BAD_ARCH, PV_MISSING_DEP, PV_UNKNOWN };
+struct pkg_verdict {
+    int code;
+    char text[200];
+    int extra_packages;             /* what else would be installed with it */
+    uint64_t download, installed;   /* bytes, for everything */
+};
+void pkg_verdict_for(const char *name, struct pkg_verdict *v);
+bool sys_has_feature(const char *name);                  /* "net", "audio", "display:wm" ... */
+bool abi_available(const char *personality);             /* can programs that use this system call interface run? */
 
 void pkg_init(void);
 void pkg_set_root(const char *prefix);                   /* install onto another volume: its zenith folder; "" for this system */

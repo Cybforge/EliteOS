@@ -29,6 +29,7 @@ int settings_main(void *arg);
 int netinfo_main(void *arg);
 int browser_main(void *arg);
 int installer_main(void *arg);
+int store_main(void *arg);
 int piano_main(void *arg);
 int chess_main(void *arg);
 int mines_main(void *arg);
@@ -57,6 +58,7 @@ const struct app_info app_table[] = {
     { "browser",  "Zenith Web",     "Browse the web over HTTP",          ICON_BROWSER,  browser_main,   true },
     { "netinfo",  "Network",        "Network status and tools",          ICON_NETWORK,  netinfo_main,   true },
     { "settings", "Settings",       "Personalize ZenithOS",              ICON_SETTINGS, settings_main,  true },
+    { "store",    "Store",          "Find and install apps and drivers", ICON_STORE,    store_main,     true },
     { "installer", "Install ZenithOS", "Copy the system to a disk",       ICON_INSTALL,  installer_main, true },
     { "about",    "About",          "About this computer",               ICON_INFO,     about_main,     true },
     { "welcome",  "Welcome",        "Tour of ZenithOS",                  ICON_HOME,     welcome_main,   true },

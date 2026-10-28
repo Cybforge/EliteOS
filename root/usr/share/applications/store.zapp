@@ -1,0 +1,7 @@
+name=Store
+name[de]=Store
+comment=Find and install apps and drivers
+comment[de]=Apps und Treiber finden und installieren
+icon=store
+exec=@store
+category=System

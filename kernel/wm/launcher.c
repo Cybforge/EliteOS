@@ -68,6 +68,7 @@ void launchers_reload(void)
     if (!list) return;
     nlist = 0;
     load_dir("/usr/share/applications");
+    load_dir("/opt/share/applications");                      /* what the store installed */
     char p[VFS_PATH_MAX];
     if (session_path(".local/share/applications", p, sizeof(p))) load_dir(p);
     qsort(list, (size_t)nlist, sizeof(*list), cmp_name);
