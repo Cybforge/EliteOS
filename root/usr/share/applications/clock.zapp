@@ -1,0 +1,5 @@
+name=Clock
+comment=Clock, calendar and stopwatch
+icon=clock
+exec=@clock
+category=Office

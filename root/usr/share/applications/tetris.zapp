@@ -1,0 +1,5 @@
+name=Blocks
+comment=Falling-blocks puzzle game
+icon=tetris
+exec=@tetris
+category=Games

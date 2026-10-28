@@ -1,0 +1,5 @@
+name=Network
+comment=Network status and tools
+icon=network
+exec=@netinfo
+category=Internet

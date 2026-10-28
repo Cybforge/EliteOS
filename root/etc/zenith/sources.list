@@ -1,0 +1,4 @@
+# Package sources, one per line: <name> <url> [unsigned]
+# A source is a folder with Packages, Packages.sig and pkg/*.zpk. Its index has
+# to be signed by one of the keys in /etc/zenith/keys unless it says "unsigned".
+zenith https://raw.githubusercontent.com/jojojonas169-debug/EliteOS/main/store/stable

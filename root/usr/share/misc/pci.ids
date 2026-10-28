@@ -1,0 +1,225 @@
+# ZenithOS PCI IDs: the vendors and devices the system has drivers for.
+# Same format as the full pci.ids (https://pci-ids.ucw.cz/); install "hwdata" from the App Store for all of them.
+018a  LevelOne
+	0106  LevelOne FPC-0106TX (RTL8139)
+021b  Compaq Computer Corporation
+	8139  Compaq HNE-300 (RTL8139)
+1002  Advanced Micro Devices, Inc. [AMD/ATI]
+	73ef  Navi 23 [Radeon RX 6650 XT/6700S/6800S]
+	73ff  Navi 23 [Radeon RX 6600/6600 XT/6600M]
+1011  Digital Equipment Corporation
+	0009  DEC 21140/21140A Fast Ethernet (Tulip)
+	0019  DEC 21142/21143 Fast Ethernet (Tulip)
+1022  Advanced Micro Devices, Inc. [AMD]
+	2000  AMD PCnet-PCI II / PCnet-FAST (Am79C970A-Am79C975)
+	2001  AMD PCnet-Home (Am79C978)
+1050  Winbond Electronics Corp
+	0940  Winbond W89C940 (NE2000 PCI)
+	5a5a  Winbond W89C940F (NE2000 PCI)
+10b7  3Com Corporation
+10bd  Surecom Technology
+	0e34  SureCom NE34 (NE2000 PCI)
+10de  NVIDIA Corporation
+10ec  Realtek Semiconductor Co., Ltd.
+	8029  Realtek RTL8029 (NE2000 PCI)
+	8136  Realtek RTL8101/8102/8103 PCIe Fast Ethernet
+	8138  Realtek RTL8139 Fast Ethernet (CardBus)
+	8139  Realtek RTL8139 Fast Ethernet
+	8161  Realtek RTL8111/8168 PCIe Gigabit Ethernet
+	8167  Realtek RTL8169SC/8110SC Gigabit Ethernet
+	8168  Realtek RTL8111/8168 PCIe Gigabit Ethernet
+	8169  Realtek RTL8169/8110 Gigabit Ethernet
+1106  VIA Technologies, Inc.
+	0926  VIA VT86C926 (NE2000 PCI)
+1113  Accton Technology Corporation
+	1211  Accton / SMC 1211TX EZCard (RTL8139)
+1186  D-Link System Inc
+	1300  D-Link DFE-538TX (RTL8139)
+	1340  D-Link DFE-690TXD (RTL8139)
+	4300  D-Link DGE-528T (RTL8169)
+	4302  D-Link DGE-530T rev C (RTL8169)
+11ab  Marvell Technology Group Ltd.
+11f6  Compex
+	1401  Compex RL2000 (NE2000 PCI)
+1234  Technical Corp.
+	1111  Bochs/QEMU Standard VGA
+1259  Allied Telesis, Inc
+	a117  Allied Telesyn 8139 (RTL8139)
+	c107  Allied Telesyn AT-2450 (RTL8169)
+126c  Nortel Networks
+	1211  Northern Telecom 8139 (RTL8139)
+12c3  Holtek Microelectronics Inc
+	0058  Holtek HT80232 (NE2000 PCI)
+	5598  Holtek HT80229 (NE2000 PCI)
+13d1  AboCom Systems Inc
+	ab06  AboCom FE2000VX (RTL8139)
+1432  Edimax Computer Co.
+	9130  Edimax EP-4103DL (RTL8139)
+144d  Samsung Electronics Co Ltd
+14c3  MEDIATEK Corp.
+14e4  Broadcom Inc. and subsidiaries
+14ea  Planex Communications Inc
+	ab06  Planex FNW-3603-TX (RTL8139)
+	ab07  Planex FNW-3800-TX (RTL8139)
+1500  Delta Electronics, Inc.
+	1360  Delta Electronics 8139 (RTL8139)
+15ad  VMware
+	07b0  VMware vmxnet3 paravirtual Ethernet
+168c  Qualcomm Atheros
+16ec  U.S. Robotics
+	0116  US Robotics USR997902 (RTL8169)
+1737  Linksys
+	1032  Linksys EG1032 v3 (RTL8169)
+1912  Renesas Technology Corp.
+1969  Qualcomm Atheros
+1af4  Red Hat, Inc.
+	1000  Virtio network device
+	1001  Virtio block device
+	1041  Virtio 1.0 network device
+	1042  Virtio 1.0 block device
+	1050  Virtio 1.0 GPU
+	1052  Virtio 1.0 input
+1b21  ASMedia Technology Inc.
+1b36  Red Hat, Inc. (QEMU)
+	000d  QEMU XHCI Host Controller
+	0100  QXL paravirtual graphic card
+1b4b  Marvell Technology Group Ltd.
+4033  Addtron Technology Co, Inc.
+	1360  Addtron 8139 (RTL8139)
+4a14  NetVin
+	5000  NetVin NV5000SC (NE2000 PCI)
+8086  Intel Corporation
+	1004  82543GC Gigabit Ethernet
+	1008  82544EI Gigabit Ethernet
+	100c  82544GC Gigabit Ethernet
+	100d  82544GC Gigabit Ethernet (LOM)
+	100e  82540EM Gigabit Ethernet
+	100f  82545EM Gigabit Ethernet
+	1010  82546EB Dual Port Gigabit Ethernet
+	1011  82545EM Gigabit Ethernet (fiber)
+	1012  82546EB Dual Port Gigabit Ethernet (fiber)
+	1013  82541EI Gigabit Ethernet
+	1015  82540EM Gigabit Ethernet (LOM)
+	1016  82540EP Gigabit Ethernet (LOM)
+	1017  82540EP Gigabit Ethernet
+	1018  82541EI Gigabit Ethernet (mobile)
+	1019  82547EI Gigabit Ethernet
+	101e  82540EP Gigabit Ethernet (mobile)
+	1026  82545GM Gigabit Ethernet
+	1029  82559 PRO/100
+	1030  82559 InBusiness 10/100
+	1031  82562ET PRO/100 VE (ICH3)
+	1032  82562ET PRO/100 VE (ICH3)
+	1033  82562EM PRO/100 VM (ICH3)
+	1034  82562EM PRO/100 VM (ICH3)
+	1038  82562 PRO/100 VM (ICH3)
+	1039  82562ET PRO/100 VE (ICH4)
+	103a  82562 PRO/100 VE (ICH4)
+	103d  82562 PRO/100 VE (ICH4, mobile)
+	103e  82562 PRO/100 VM (ICH4, mobile)
+	1049  82566MM Gigabit Ethernet (ICH8)
+	104a  82566DM Gigabit Ethernet (ICH8)
+	104b  82566DC Gigabit Ethernet (ICH8)
+	104d  82566MC Gigabit Ethernet (ICH8)
+	1050  82562EZ PRO/100 VE (ICH5)
+	1051  82562 PRO/100 VE (ICH5)
+	1059  82551QM PRO/100 M (mobile)
+	105e  82571EB Dual Port Gigabit Ethernet
+	105f  82571EB Dual Port Gigabit Ethernet (fiber)
+	1064  82562ET/EZ/GT/GZ PRO/100 VE (ICH6)
+	1065  82562 PRO/100 VE (ICH6)
+	1068  82562ET PRO/100 VE (ICH6)
+	1069  82562EM/EX/GX PRO/100 VM (ICH6)
+	1075  82547GI Gigabit Ethernet
+	1076  82541GI Gigabit Ethernet
+	1077  82541GI Gigabit Ethernet (mobile)
+	1078  82541ER Gigabit Ethernet
+	1079  82546GB Dual Port Gigabit Ethernet
+	107c  82541PI Gigabit Ethernet
+	107d  82572EI Gigabit Ethernet
+	107e  82572EI Gigabit Ethernet (fiber)
+	108b  82573V Gigabit Ethernet
+	108c  82573E Gigabit Ethernet
+	1091  82562GX PRO/100 VE (ICH7)
+	1092  82562G PRO/100 VE (ICH7)
+	1094  82562GT PRO/100 VE (ICH7)
+	109a  82573L Gigabit Ethernet
+	10a4  82571EB Quad Port Gigabit Ethernet
+	10a7  82575EB Gigabit Ethernet
+	10a9  82575EB Gigabit Ethernet (fiber)
+	10b9  82572EI Gigabit Ethernet
+	10bd  82566DM-2 Gigabit Ethernet (ICH9)
+	10c9  82576 Gigabit Ethernet
+	10cc  82567LM-2 Gigabit Ethernet (ICH10)
+	10cd  82567LF-2 Gigabit Ethernet (ICH10)
+	10ce  82567V-2 Gigabit Ethernet (ICH10)
+	10d3  82574L Gigabit Ethernet
+	10d6  82575GB Quad Port Gigabit Ethernet
+	10de  82567LM-3 Gigabit Ethernet (ICH10)
+	10df  82567LF-3 Gigabit Ethernet (ICH10)
+	10e5  82567LM-4 Gigabit Ethernet (ICH9)
+	10e6  82576 Gigabit Ethernet (fiber)
+	10e7  82576 Gigabit Ethernet (SerDes)
+	10e8  82576 Quad Port Gigabit Ethernet
+	10ea  82577LM Gigabit Ethernet
+	10eb  82577LC Gigabit Ethernet
+	10ef  82578DM Gigabit Ethernet
+	10f0  82578DC Gigabit Ethernet
+	10f6  82574LA Gigabit Ethernet
+	1209  82559ER/82551IT PRO/100
+	1229  82557/8/9/0/1 PRO/100
+	1237  440FX - 82441FX PMC [Natoma]
+	1502  82579LM Gigabit Ethernet
+	1503  82579V Gigabit Ethernet
+	150a  82576NS Gigabit Ethernet
+	150c  82583V Gigabit Ethernet
+	150e  82580 Gigabit Ethernet
+	150f  82580 Gigabit Ethernet (fiber)
+	1516  82580 Dual Port Gigabit Ethernet
+	1521  I350 Gigabit Ethernet
+	1522  I350 Gigabit Ethernet (fiber)
+	1523  I350 Gigabit Ethernet (SerDes)
+	1526  82576 Quad Port Gigabit Ethernet (ET2)
+	1533  I210 Gigabit Ethernet
+	1536  I210 Gigabit Ethernet (fiber)
+	1537  I210 Gigabit Ethernet (SerDes)
+	1539  I211 Gigabit Ethernet
+	153a  Ethernet Connection I217-LM
+	153b  Ethernet Connection I217-V
+	1559  Ethernet Connection I218-V
+	155a  Ethernet Connection I218-LM
+	156f  Ethernet Connection I219-LM
+	1570  Ethernet Connection I219-V
+	157b  I210 Gigabit Ethernet (flashless)
+	15a0  Ethernet Connection (2) I218-LM
+	15a1  Ethernet Connection (2) I218-V
+	15a2  Ethernet Connection (3) I218-LM
+	15a3  Ethernet Connection (3) I218-V
+	15b7  Ethernet Connection (2) I219-LM
+	15b8  Ethernet Connection (2) I219-V
+	15bb  Ethernet Connection (7) I219-LM
+	15bc  Ethernet Connection (7) I219-V
+	15bd  Ethernet Connection (6) I219-LM
+	15be  Ethernet Connection (6) I219-V
+	15d6  Ethernet Connection (5) I219-V
+	15d7  Ethernet Connection (4) I219-LM
+	15d8  Ethernet Connection (4) I219-V
+	15e3  Ethernet Connection (5) I219-LM
+	2415  82801AA AC'97 Audio Controller
+	2449  82562EM PRO/100 VE (ICH2)
+	2459  82562 PRO/100 VE (ICH2, mobile)
+	245d  82562 PRO/100 VM (ICH2)
+	2668  82801FB/FBM/FR/FW/FRW (ICH6 Family) High Definition Audio Controller
+	27dc  82801G PRO/100 VE (ICH7)
+	2918  82801IB (ICH9) LPC Interface Controller
+	2922  82801IR/IO/IH (ICH9R/DO/DH) 6 port SATA Controller [AHCI mode]
+	2930  82801I (ICH9 Family) SMBus Controller
+	293e  82801I (ICH9 Family) HD Audio Controller
+	294c  82566DC-2 Gigabit Ethernet (ICH9)
+	29c0  82G33/G31/P35/P31 Express DRAM Controller
+	7000  82371SB PIIX3 ISA [Natoma/Triton II]
+	7010  82371SB PIIX3 IDE [Natoma/Triton II]
+	7113  82371AB/EB/MB PIIX4 ACPI
+80ee  InnoTek Systemberatung GmbH (VirtualBox)
+8e2e  KTI
+	3000  KTI ET32P2 (NE2000 PCI)

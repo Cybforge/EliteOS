@@ -1,0 +1,5 @@
+name=Install ZenithOS
+comment=Copy the system to a disk
+icon=install
+exec=@installer
+category=System

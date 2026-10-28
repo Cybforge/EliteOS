@@ -1,0 +1,5 @@
+name=Minesweeper
+comment=Clear the field without a bang
+icon=mines
+exec=@mines
+category=Games

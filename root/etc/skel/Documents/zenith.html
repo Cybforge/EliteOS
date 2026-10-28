@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>ZenithOS Handbook</title>
+<style>body { font-family: sans-serif; }</style>
+</head>
+<body>
+<h1>ZenithOS Handbook</h1>
+<p>This page is a local HTML file (<code>/home/user/Documents/zenith.html</code>) rendered by
+<b>Zenith Web</b>, the browser that ships with ZenithOS. No network is needed to read it.</p>
+
+<h2>What is inside</h2>
+<ul>
+<li><b>Kernel</b> &ndash; 64-bit, SMP with up to 64 CPUs, preemptive scheduler, ring&nbsp;3 processes</li>
+<li><b>Desktop</b> &ndash; a compositing window manager with shadows, blur and animations</li>
+<li><b>Drivers</b> &ndash; PS/2, xHCI USB (keyboards, mice, tablets, hubs), Intel e1000 network</li>
+<li><b>Network</b> &ndash; DHCP, DNS, ICMP, UDP and TCP, plus this browser on top</li>
+</ul>
+
+<h2>Keyboard shortcuts</h2>
+<ol>
+<li><kbd>Win</kbd> opens the start menu, just start typing to search</li>
+<li><kbd>Alt+Tab</kbd> switches windows, <kbd>Alt+F4</kbd> closes one</li>
+<li><kbd>Win+Left</kbd> / <kbd>Win+Right</kbd> snap a window to half the screen</li>
+<li><kbd>Ctrl+Alt+T</kbd> opens a terminal</li>
+</ol>
+
+<h2>Writing a program</h2>
+<p>User programs are plain ELF files built against the small ZenithOS libc:</p>
+<pre>
+#include &lt;zenith.h&gt;
+
+int main(int argc, char **argv)
+{
+    printf("Hello from ring 3!\n");
+    return 0;
+}
+</pre>
+
+<blockquote>Tip: open a terminal and type <code>open http://10.0.2.2:8000/</code> to load a page
+served by the QEMU host, or <code>open /home/user</code> to browse your files.</blockquote>
+
+<hr>
+<p><small>Links: <a href="file:///home/user/">home folder</a> &middot;
+<a href="welcome.txt">welcome.txt</a> &middot; <a href="about:home">start page</a></small></p>
+</body>
+</html>

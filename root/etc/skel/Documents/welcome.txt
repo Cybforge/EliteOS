@@ -1,0 +1,20 @@
+Welcome to ZenithOS!
+====================
+
+ZenithOS is a 64-bit operating system written from scratch:
+its own UEFI bootloader, its own kernel, its own drivers,
+its own compositing desktop and its own applications.
+
+Things to try
+-------------
+  * Press the Windows key (or click the Z) to open the start menu
+    and just start typing to search.
+  * Ctrl+Alt+T opens a terminal. Try:  neofetch, bench, cal,
+    matrix, fractal, tree /, ls -l /bin
+  * Zenith 3D and Mandelbrot render on every CPU core at once.
+  * Alt+Tab switches windows, Win+D shows the desktop,
+    Print Screen saves a screenshot to ~/Pictures.
+  * Drag windows by their title bar, resize them at the edges,
+    double-click the title bar to maximize.
+
+Have fun!

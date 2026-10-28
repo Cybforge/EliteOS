@@ -1,0 +1,5 @@
+name=Mandelbrot
+comment=Fractal explorer on all CPU cores
+icon=fractal
+exec=@mandel
+category=Demos

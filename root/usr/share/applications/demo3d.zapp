@@ -1,0 +1,5 @@
+name=Zenith 3D
+comment=Real-time software 3D renderer
+icon=cube
+exec=@demo3d
+category=Demos

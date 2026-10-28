@@ -1,0 +1,5 @@
+name=Images
+comment=View pictures and screenshots
+icon=image
+exec=@images
+category=Graphics

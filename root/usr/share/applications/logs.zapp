@@ -1,0 +1,5 @@
+name=System Log
+comment=Kernel messages
+icon=log
+exec=@logs
+category=System

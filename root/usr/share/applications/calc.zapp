@@ -1,0 +1,5 @@
+name=Calculator
+comment=Scientific calculator
+icon=calc
+exec=@calc
+category=Office

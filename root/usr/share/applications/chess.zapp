@@ -1,0 +1,5 @@
+name=Chess
+comment=Play against a multi-core engine
+icon=chess
+exec=@chess
+category=Games

@@ -1,0 +1,53 @@
+#name=Italiano
+#short=IT
+#altgr=yes
+# key  plain  shift  AltGr  AltGr+Shift   (- = nothing)
+grave      \  |  -  -
+1          1  !  -  -
+2          2  "  -  -
+3          3  £  -  -
+4          4  $  -  -
+5          5  %  €  -
+6          6  &  -  -
+7          7  /  -  -
+8          8  (  -  -
+9          9  )  -  -
+0          0  =  -  -
+minus      '  ?  -  -
+equal      ì  ^  -  -
+q          q  Q  -  -
+w          w  W  -  -
+e          e  E  -  -
+r          r  R  -  -
+t          t  T  -  -
+y          y  Y  -  -
+u          u  U  -  -
+i          i  I  -  -
+o          o  O  -  -
+p          p  P  -  -
+lbrace     è  é  [  {
+rbrace     +  *  ]  }
+a          a  A  -  -
+s          s  S  -  -
+d          d  D  -  -
+f          f  F  -  -
+g          g  G  -  -
+h          h  H  -  -
+j          j  J  -  -
+k          k  K  -  -
+l          l  L  -  -
+semicolon  ò  ç  @  -
+apostrophe à  °  #  -
+backslash  ù  §  -  -
+102nd      <  >  -  -
+z          z  Z  -  -
+x          x  X  -  -
+c          c  C  -  -
+v          v  V  -  -
+b          b  B  -  -
+n          n  N  -  -
+m          m  M  -  -
+comma      ,  ;  -  -
+dot        .  :  -  -
+slash      U+002D  _  -  -
+space      U+0020  U+0020
